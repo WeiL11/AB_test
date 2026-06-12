@@ -1,63 +1,87 @@
 # Experimentor
 
-**A production-grade A/B testing platform with 9 statistical methods, from frequentist hypothesis tests to multi-armed bandits.**
+You want to test whether a change -- a new button color, a different checkout flow, a redesigned landing page -- actually improves a metric you care about. You split users into two groups: **Group A** sees the original, **Group B** sees the change. You collect data from both groups and compare.
 
-Built to demonstrate the statistical rigor and system design behind platforms like Google Optimize, Statsig, and Eppo. Full-stack application with a FastAPI backend, React frontend, and a statistical engine covering the methods that matter most in industry experimentation.
-
----
-
-## What Sets This Apart
-
-Most A/B testing platforms implement a t-test and call it done. Experimentor implements the same statistical methods used at Google, Netflix, and Microsoft to run experiments correctly at scale.
-
-| Capability | Basic A/B Tool | Experimentor |
-|---|---|---|
-| Hypothesis testing | Student's t-test (assumes equal variance) | Welch's t-test (no equal variance assumption) |
-| Peeking at results | Inflates false positive rate to ~14.6% with 5 peeks | Group sequential testing with O'Brien-Fleming spending |
-| Continuous monitoring | Not supported | Always-valid confidence sequences (valid at any stopping time) |
-| Bayesian analysis | P(B>A) only | Full posterior: P(B>A), expected loss, ROPE analysis |
-| Multiple metrics | No correction (64% false positive rate with 20 metrics) | Bonferroni, Holm, Benjamini-Hochberg FDR |
-| Traffic optimization | Fixed 50/50 split | Thompson Sampling, UCB1, Epsilon-Greedy bandits |
-| Variance reduction | None | CUPED (30-50% variance reduction using pre-experiment data) |
-| Effect stability | Declares winner on day 1 | Novelty/primacy detection via trend regression |
-| Power analysis | Manual calculation | Interactive calculator with power curves |
-| Segment analysis | None | Heterogeneous treatment effect detection with Cochran's Q |
-| Traffic splitting | Random (non-reproducible) | Deterministic SHA-256 hashing (stateless, verifiable) |
-| Test suite | None | 291 unit tests across all statistical methods |
+That comparison is where things get tricky. A naive approach gives you wrong answers more often than you'd expect. This platform implements 10 methods to get the comparison right.
 
 ---
 
-## Statistical Methods
+## How the 10 Methods Work (and Why Each One Matters)
 
-### 1. Frequentist Testing
-Welch's t-test for continuous metrics, unpooled z-test for proportions. Uses the Welch-Satterthwaite degrees of freedom approximation -- no equal-variance assumption required. Chi-squared independence test for contingency tables.
+### 1. Is B actually different from A? — Welch's T-Test
 
-### 2. Sequential Testing (Group Sequential)
-O'Brien-Fleming and Pocock alpha-spending functions via the Lan-DeMets framework. Solves the "peeking problem": checking results 5 times at alpha=0.05 inflates false positives to ~14.6% without correction. Sequential boundaries keep the overall Type I error at exactly 0.05.
+You collect a metric (say, revenue per user) from Group A and Group B. You compute the mean of each group. But the means will always differ slightly just from random chance -- even if the change did nothing. The question is whether the gap is big enough to be real.
 
-### 3. Always-Valid Inference (Confidence Sequences)
-Normal-mixture mSPRT confidence sequences that are valid at any sample size, including data-dependent stopping times. Wider than fixed-horizon CIs early on, but guarantee `P(mu in CS) >= 1 - alpha` at ALL times simultaneously.
+**The problem with the simple approach:** Student's t-test assumes both groups have the same variance. That's almost never true in A/B tests -- the change itself shifts the distribution. If you use it anyway, your confidence intervals are wrong.
 
-### 4. Bayesian A/B Testing
-Beta-Binomial model for conversion metrics, Normal-Normal conjugate model for continuous metrics. Directly answers business questions: "What is the probability B beats A?" and "If I ship B and I'm wrong, how much do I lose?" (expected loss). Includes Region of Practical Equivalence (ROPE) analysis.
+**What we do instead:** Welch's t-test drops the equal-variance assumption. It estimates degrees of freedom from each group's own variance (Welch-Satterthwaite approximation). For proportions (converted or not), we use an unpooled z-test. Both tell you: "given the data from A and B, here's the effect size, a confidence interval, and a p-value."
 
-### 5. Multi-Armed Bandits
-Thompson Sampling (optimal Bayesian exploration-exploitation), UCB1 (deterministic upper confidence bounds), and Epsilon-Greedy (simple baseline). Dynamically shifts traffic toward better-performing variants to reduce opportunity cost during the experiment.
+### 2. Can I check results early without fooling myself? — Sequential Testing
 
-### 6. CUPED Variance Reduction
-Controlled-experiment Using Pre-Experiment Data. Reduces metric variance by `1 - rho^2` (30-50% typical) by regressing out pre-experiment user behavior. The adjustment `Y_adj = Y - theta * (X - E[X])` is provably unbiased since `E[X - E[X]] = 0`.
+You launch the experiment and look at the dashboard on day 3. Not significant. You look again on day 5, day 7, day 10, day 14. On day 14 you see p=0.04 and declare a winner.
 
-### 7. Multiple Testing Correction
-Bonferroni (controls FWER, most conservative), Holm-Bonferroni step-down (controls FWER, strictly more powerful), and Benjamini-Hochberg (controls FDR, best for 10+ metrics). Without correction, testing 20 metrics at alpha=0.05 gives a 64% chance of at least one false positive.
+**The problem:** Every time you peek, you give randomness another chance to look significant. Peeking 5 times at alpha=0.05 inflates your real false positive rate to about 14.6%. You think you have 95% confidence, but you actually have 85%.
 
-### 8. Power Analysis
-Sample size calculation, minimum detectable effect computation (via Brent's method), power curves, and experiment duration estimation. Supports both binomial and continuous metrics.
+**What we do instead:** O'Brien-Fleming alpha-spending. Instead of spending your entire alpha=0.05 budget on one test, you pre-plan how many times you'll look and "spend" small slices of alpha at each look. Early looks have very tight boundaries (hard to reject), later looks have looser ones. The total false positive rate across all looks stays at exactly 5%.
 
-### 9. Novelty/Primacy Detection
-Weighted linear regression of daily treatment effects over time. Detects decaying effects (novelty -- users react to change, not improvement) and growing effects (primacy -- users learning a new flow). Prevents premature winner declaration.
+### 3. What if I don't know when I'll check? — Confidence Sequences
 
-### 10. Segment Analysis
-Runs the A/B test within each user segment independently, then tests for heterogeneous treatment effects using Cochran's Q test with inverse-variance weighting. Applies multiple testing correction across segments. Detects when an overall null result hides a strong subgroup effect.
+Sequential testing requires pre-planning how many times you'll look. But what if your team watches a live dashboard and could stop the experiment any time?
+
+**What we do:** Confidence sequences (mixture Sequential Probability Ratio Test). These produce confidence intervals that are valid at *every* sample size simultaneously. You can check every hour, every day, or only once -- the guarantee holds regardless. The tradeoff: the intervals are wider than fixed-horizon CIs early on, so you need more data to reach significance.
+
+### 4. What's the probability B is actually better? — Bayesian Testing
+
+Frequentist tests give you a p-value: "if B were no different from A, how unlikely is the data I observed?" That answers the question backwards. What you really want to know is: "given the data, what's the probability B is better?"
+
+**What we do:** For conversion metrics, we use a Beta-Binomial model. Start with a flat prior (Beta(1,1) -- no opinion), observe conversions and non-conversions, get a posterior distribution over each group's true rate. Then we sample 100,000 times from both posteriors and directly compute:
+- **P(B > A):** How often B's sampled rate beats A's.
+- **Expected loss:** If you ship B and you're wrong, how much do you lose on average? This prevents the trap where P(B>A) = 96% but B is only 0.001% better when it wins and 5% worse when it loses.
+- **ROPE analysis:** Is the difference practically meaningful, or just statistically non-zero?
+
+Ship decision requires *both* P(B>A) > 0.95 *and* expected loss < 0.1%.
+
+### 5. Can we send more traffic to the winner while testing? — Multi-Armed Bandits
+
+With a fixed 50/50 split, half your users get the worse experience for the entire experiment. Bandits dynamically shift traffic toward the variant that's performing better, reducing the total cost of experimentation.
+
+**What the data tells the bandit:** Each group's conversion rate updates a reward estimate. The bandit uses these estimates to decide where to send the next user:
+- **Thompson Sampling:** Sample from each variant's Beta posterior, send the user to whichever sampled highest. Naturally balances exploration (trying uncertain options) and exploitation (using the current best).
+- **UCB1:** Send users to the variant with the highest `mean + exploration_bonus`. Deterministic, no randomness.
+- **Epsilon-Greedy:** Send 90% of traffic to the best variant, 10% random. Simple baseline.
+
+### 6. Can we make the experiment faster? — CUPED Variance Reduction
+
+A user who spent $200 last month is likely to spend more this month than a user who spent $5 -- regardless of which group they're in. This natural variation adds noise to your A/B test, making it harder to detect a real effect.
+
+**What we do:** CUPED (Controlled-experiment Using Pre-Experiment Data) subtracts out this predictable variation. For each user, we adjust: `Y_adjusted = Y - theta * (X - average(X))`, where X is their pre-experiment behavior. This reduces variance by `1 - correlation^2`. With typical correlations of 0.5-0.7, that's 25-50% less noise -- equivalent to doubling your sample size for free. The adjustment is provably unbiased because `average(X - average(X)) = 0` by construction.
+
+### 7. What if I'm testing 20 metrics at once? — Multiple Testing Correction
+
+You measure conversion, revenue, session time, page views, bounce rate, and 15 other metrics. Even if B has zero effect on everything, there's a `1 - 0.95^20 = 64%` chance at least one metric shows p < 0.05 by pure chance.
+
+**What we do:** Adjust the significance threshold:
+- **Bonferroni:** Divide alpha by the number of tests. Simple, conservative.
+- **Holm (step-down):** Strictly more powerful than Bonferroni -- tests the smallest p-value at alpha/n, the second-smallest at alpha/(n-1), and so on. No reason to ever prefer Bonferroni over Holm.
+- **Benjamini-Hochberg:** Controls the *false discovery rate* rather than the chance of any single false positive. Much more lenient, best when you have 10+ exploratory metrics and accept that some "significant" results may be false.
+
+### 8. How many users do I need? — Power Analysis
+
+Before running the experiment: how large does each group need to be to detect an effect of a given size?
+
+**What the data tells you (in advance):** Given your baseline conversion rate (say 10%), how big an improvement you want to detect (say 1 percentage point), and your tolerance for false negatives (typically 20%), the power calculator computes the required sample size per variant. It also plots a *power curve* showing how detection ability changes with effect size, and estimates how many days the experiment will take given your daily traffic.
+
+### 9. Is the effect real or just novelty? — Novelty/Primacy Detection
+
+You launch a new checkout flow. Conversion jumps 15% in week 1, 8% in week 2, 3% in week 3. Users were reacting to the novelty of change, not the quality of the new design. If you stopped on day 7, you'd massively overestimate the long-term effect.
+
+**What we do:** Compute the daily treatment effect (B minus A) for each day, then fit a weighted linear regression over time. If the slope is significantly negative, the effect is decaying (novelty). If significantly positive, it's growing (primacy -- users learning a new flow). If flat, the effect is stable and trustworthy.
+
+### 10. Does B work differently for different users? — Segment Analysis
+
+Overall, B shows no significant effect. But when you split by platform, B is +12% on mobile and -8% on desktop. The overall average hides real heterogeneity.
+
+**What we do:** Run the A/B test independently within each user segment (country, platform, cohort, etc.), then test whether the effects differ across segments using Cochran's Q test with inverse-variance weighting. Multiple testing correction is applied across segments to prevent false discoveries.
 
 ---
 
@@ -87,8 +111,8 @@ Runs the A/B test within each user segment independently, then tests for heterog
 ### Option 1: Docker Compose (recommended)
 
 ```bash
-git clone https://github.com/your-username/ab-testing-platform.git
-cd ab-testing-platform
+git clone https://github.com/WeiL11/AB_test.git
+cd AB_test
 
 # Start all services
 docker compose up -d
@@ -118,7 +142,7 @@ uvicorn app.main:app --reload --port 8000
 # Seed demo data
 python -m scripts.seed_demo
 
-# Run tests (291 tests)
+# Run tests (303 tests)
 pytest
 ```
 
@@ -194,7 +218,7 @@ ab-testing-platform/
 |   |       |-- power_analysis.py    # Sample size, MDE, power curves
 |   |       |-- novelty_detection.py # Novelty/primacy trend detection
 |   |       +-- segment_analysis.py  # Heterogeneous treatment effects
-|   |-- tests/                       # 291 unit tests
+|   |-- tests/                       # 303 unit tests
 |   |-- scripts/
 |   |   +-- seed_demo.py             # Generates 3 experiments with 150K events
 |   +-- Dockerfile
