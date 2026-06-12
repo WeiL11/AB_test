@@ -8,7 +8,45 @@ Full-stack A/B testing platform. 10 statistical methods, 303 tests, FastAPI + Re
 
 Group A sees the current experience. Group B sees the change. Both groups generate data -- conversions, revenue, session duration. The question: is the difference between A and B real, or noise?
 
-Each method below answers a different part of that question.
+Each method below answers a different part of that question. Here's what they look like on a real case.
+
+---
+
+## Case Study: Spotify Recommendation Algorithm
+
+Spotify (hypothetical) tests a new ML-based recommendation engine. 50,000 Premium users per group, 3 weeks. Three metrics: streaming hours (primary), renewal rate (secondary), crash rate (guardrail).
+
+```
+python -m scripts.realistic_case   # run it yourself, no database needed
+```
+
+### Results from each method
+
+**1. Power analysis** — Need 974 users/group for streaming hours, 9,955 for renewal. With 50K we have 100% power on both.
+
+**2. Frequentist** — Streaming hours: control 18.20, treatment 18.46, **+0.27 hrs (p<0.001)**. Renewal: +1.68pp (p<0.001). Crash rate: +0.29pp **(p=0.001, guardrail violated)**.
+
+**3. Sequential** — Could have stopped at 40% of data (Look 2: z=6.32 > boundary 3.10). Saved 60% of experiment time.
+
+**4. Confidence sequences** — Effect +0.27 hrs, bounds [+0.265, +0.266], significant at any stopping time.
+
+**5. Bayesian** — Streaming: P(B>A) = 100%, expected loss = 0, recommendation: ship. Renewal: P(B>A) = 100%.
+
+**6. Bandits** — Thompson Sampling sends 88% of traffic to treatment after 20K rounds. Treatment is clearly better.
+
+**7. CUPED** — Pre/post correlation 0.86. Variance reduced by 75%. Same effect (+0.28 hrs), but much cleaner signal.
+
+**8. Multiple testing** — All 3 metrics remain significant after Holm correction. Including the crash rate guardrail.
+
+**9. Novelty detection** — Slope +0.003 hrs/day, p=0.55. Effect is **stable** over 21 days. No decay.
+
+**10. Segment analysis** — Cochran's Q p<0.001: effects differ by platform. iOS: **+0.45 hrs (p<0.001)**. Android: -0.03 hrs (p=0.49, not significant).
+
+### The decision
+
+9 out of 10 methods say ship. But the crash rate guardrail failed (+0.29pp, p=0.001). **Decision: do not ship.** Guardrail regression is a hard veto. Investigate the crash increase -- if fixable, patch and re-run. Also, the effect is iOS-only; Android shows no improvement. Consider a targeted rollout.
+
+This is exactly the kind of case where methods disagree and the decision tree matters.
 
 ---
 
