@@ -116,6 +116,26 @@ All endpoints under `/api/v1`. Full Swagger docs at `/docs`.
 
 ---
 
+## Tests (303)
+
+Every statistical method is tested independently. No mocking -- tests generate synthetic data with known properties and verify the math produces correct results.
+
+| Module | Tests | What's verified |
+|---|---|---|
+| Frequentist | 14 | Welch's t-test, z-test, chi-squared: significance, CIs, edge cases |
+| Sequential | 35 | O'Brien-Fleming/Pocock boundaries, alpha spending, early stopping |
+| Confidence sequences | 33 | Width narrows over time, detects effects, valid at all stopping times |
+| Bayesian | 48 | Posterior accuracy, P(B>A), expected loss, ROPE, ship/don't-ship logic |
+| Bandits | 54 | Thompson/UCB1/Epsilon-Greedy allocation, regret, simulation correctness |
+| CUPED | 20 | Variance reduction, effect preservation, unbiasedness |
+| Multiple testing | 33 | Bonferroni/Holm/BH adjustments, step-down/step-up logic, dispatching |
+| Novelty detection | 26 | Decay/growth/stable classification, weighted regression, daily effects |
+| Power analysis | 11 | Sample size, MDE round-trip, power curves, duration estimation |
+| Assignment | 5 | Deterministic hashing, uniform distribution, cross-experiment independence |
+| Integration | 12 | End-to-end: all 10 methods agree on the same synthetic experiment |
+
+---
+
 ## Project Structure
 
 ```
