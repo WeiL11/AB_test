@@ -85,6 +85,66 @@ Overall, B shows no significant effect. But when you split by platform, B is +12
 
 ---
 
+## When Methods Disagree: What Each One Tells You
+
+In the simulation above, all 10 methods agreed: ship the blue button. In real experiments, they often don't. Here's how to read each result and what to do when they conflict.
+
+### The core question: Is B better than A?
+
+**Frequentist** looks at the gap between A and B's averages and asks: "if there were truly no difference, how unlikely is a gap this large?" If very unlikely (p < 0.05), it calls the difference real.
+
+**Bayesian** flips the question: "given the data, what's the probability B is actually better?" It also asks: "if I ship B and I'm wrong, how much money do I lose?"
+
+**When they disagree:** Frequentist might say p=0.03 (significant), but Bayesian says P(B>A) = 91% with expected loss of 0.3% -- not confident enough. This means the effect is probably real, but the *business risk* of being wrong is still too high. Collect more data.
+
+### The timing question: When can I look at results?
+
+**Sequential testing** lets you check at pre-planned intervals (20%, 40%, 60%, 80%, 100% of data) without inflating false positives. It sets a strict bar early and loosens it over time.
+
+**Confidence sequences** let you check at *any* time without pre-planning. The tradeoff: wider intervals, so you need more data to reach significance.
+
+**If you peeked without either method:** Your result is unreliable. Looking 5 times at alpha=0.05 gives you a ~14.6% false positive rate, not 5%.
+
+### The noise question: Is my data too noisy?
+
+**CUPED** subtracts out predictable user behavior using pre-experiment data. A user who spent $200 last week will spend more this week regardless of the button color. CUPED removes that noise, making the same effect easier to detect.
+
+**Power analysis** tells you *before* the experiment how many users you need. If you're underpowered (too few users), you might miss a real effect entirely.
+
+**When they interact:** If the unadjusted test says p=0.08 (not significant) but CUPED-adjusted says p=0.01 (significant), trust CUPED. It didn't inflate the effect -- it just removed noise. It's like having a bigger sample.
+
+### The "too many metrics" question
+
+**Multiple testing correction** adjusts for checking many metrics at once. You measured 20 things. Even if B changes nothing, there's a 64% chance at least one shows p < 0.05 by random chance.
+
+- **Holm:** Use when you have 2-5 important metrics. Controls the chance of *any* false positive.
+- **Benjamini-Hochberg:** Use when you have 10+ exploratory metrics. Accepts some false discoveries but finds more true ones.
+- **One pre-declared primary metric:** No correction needed for that one metric. Correction is for the *family* of extra tests.
+
+### The "is this effect permanent?" question
+
+**Novelty detection** checks whether the effect is decaying over time. If the lift was +15% in week 1, +8% in week 2, and +3% in week 3, users were reacting to the *change*, not to the improvement. Wait 1-2 more weeks until the trend flattens, then re-analyze.
+
+### The "reduce waste" question
+
+**Bandits** gradually shift traffic toward the better variant during the experiment. After 5,000 rounds, Thompson Sampling might send 98% to B. But because Group A then has very few observations, you can't run a valid frequentist test on the unbalanced data. Bandits optimize *revenue during the experiment*, not *statistical certainty after it*.
+
+### The "does it work for everyone?" question
+
+**Segment analysis** runs the test separately within each user group. Overall, B might show zero effect -- but it's +12% on mobile and -8% on desktop. The average hides the real story. Trustworthy when: you declared the segment before the experiment, or the Cochran's Q test confirms effects genuinely differ across groups.
+
+### Priority when they conflict
+
+```
+1. Guardrail metric regressed?        → Don't ship. Full stop.
+2. Novelty decay detected?            → Wait for effect to stabilize.
+3. Peeked without sequential/CS?      → Result is invalid. Extend or re-run.
+4. Frequentist + Bayesian both agree? → Follow their answer.
+5. They disagree?                     → Collect more data. They'll converge.
+```
+
+---
+
 ## Tech Stack
 
 **Backend**
@@ -274,6 +334,7 @@ variants + metrics   deterministic hash    metric values         /results endpoi
 
 ## Further Reading
 
+- **[Decision Tree](docs/DECISION_TREE.md)** -- What to do when the 10 methods disagree. Covers 9 conflict scenarios with concrete decisions.
 - **[Architecture Document](docs/ARCHITECTURE.md)** -- System design, database schema, statistical engine architecture, key design decisions with tradeoffs, and scaling considerations.
 
 ---
