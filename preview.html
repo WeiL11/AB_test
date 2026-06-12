@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Experimentor - A/B Testing Platform</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --indigo-50: #eef2ff;
+      --indigo-100: #e0e7ff;
+      --indigo-500: #6366f1;
+      --indigo-600: #4f46e5;
+      --indigo-700: #4338ca;
+      --indigo-900: #312e81;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-400: #94a3b8;
+      --slate-500: #64748b;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --emerald-50: #ecfdf5;
+      --emerald-100: #d1fae5;
+      --emerald-500: #10b981;
+      --emerald-600: #059669;
+      --emerald-700: #047857;
+      --red-50: #fef2f2;
+      --red-500: #ef4444;
+      --red-600: #dc2626;
+      --amber-50: #fffbeb;
+      --amber-500: #f59e0b;
+      --amber-600: #d97706;
+      --blue-50: #eff6ff;
+      --blue-500: #3b82f6;
+      --blue-600: #2563eb;
+      --purple-50: #faf5ff;
+      --purple-500: #a855f7;
+      --purple-600: #9333ea;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: var(--slate-50);
+      color: var(--slate-800);
+      line-height: 1.6;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      background: linear-gradient(135deg, var(--indigo-900) 0%, var(--slate-900) 100%);
+      color: white;
+      padding: 80px 0 60px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: radial-gradient(circle at 30% 70%, rgba(99,102,241,0.15) 0%, transparent 50%),
+                  radial-gradient(circle at 70% 30%, rgba(99,102,241,0.1) 0%, transparent 50%);
+    }
+    .hero-content { position: relative; z-index: 1; max-width: 800px; margin: 0 auto; padding: 0 24px; }
+    .hero h1 { font-size: 48px; font-weight: 800; letter-spacing: -1px; margin-bottom: 16px; }
+    .hero h1 span { color: var(--indigo-500); }
+    .hero p { font-size: 20px; color: var(--slate-300); max-width: 640px; margin: 0 auto 32px; }
+    .hero-badges { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.15);
+      padding: 6px 14px; border-radius: 20px; font-size: 13px; color: var(--slate-300);
+    }
+    .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot-green { background: var(--emerald-500); }
+    .dot-blue { background: var(--blue-500); }
+    .dot-purple { background: var(--purple-500); }
+    .dot-amber { background: var(--amber-500); }
+
+    /* ── Container ── */
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Section ── */
+    .section { padding: 64px 0; }
+    .section-header { text-align: center; margin-bottom: 48px; }
+    .section-header h2 { font-size: 32px; font-weight: 700; color: var(--slate-900); margin-bottom: 8px; }
+    .section-header p { font-size: 16px; color: var(--slate-500); max-width: 600px; margin: 0 auto; }
+    .section-divider { border: none; border-top: 1px solid var(--slate-200); margin: 0; }
+
+    /* ── Comparison Table ── */
+    .comparison-table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .comparison-table th { background: var(--slate-800); color: white; padding: 14px 20px; text-align: left; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .comparison-table td { padding: 14px 20px; font-size: 14px; border-bottom: 1px solid var(--slate-100); }
+    .comparison-table tr:last-child td { border-bottom: none; }
+    .comparison-table tbody tr:nth-child(even) { background: var(--slate-50); }
+    .comparison-table tbody tr:nth-child(odd) { background: white; }
+    .comparison-table td:first-child { font-weight: 600; color: var(--slate-700); width: 200px; }
+    .comparison-table td:nth-child(2) { color: var(--slate-400); }
+    .comparison-table td:nth-child(3) { color: var(--indigo-700); font-weight: 500; }
+    .comparison-table .check { color: var(--emerald-500); font-weight: bold; }
+    .comparison-table .cross { color: var(--red-500); }
+
+    /* ── Method Cards ── */
+    .methods-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 20px; }
+    .method-card {
+      background: white; border: 1px solid var(--slate-200); border-radius: 12px;
+      padding: 28px; transition: all 0.2s;
+    }
+    .method-card:hover { border-color: var(--indigo-300); box-shadow: 0 4px 12px rgba(99,102,241,0.1); transform: translateY(-2px); }
+    .method-card .method-number {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--indigo-50); color: var(--indigo-600);
+      font-size: 14px; font-weight: 700; margin-bottom: 12px;
+    }
+    .method-card h3 { font-size: 16px; font-weight: 700; color: var(--slate-900); margin-bottom: 4px; }
+    .method-card .method-question { font-size: 13px; color: var(--indigo-600); font-style: italic; margin-bottom: 10px; }
+    .method-card p { font-size: 14px; color: var(--slate-600); line-height: 1.55; }
+    .method-card .method-tag {
+      display: inline-block; margin-top: 12px; padding: 3px 10px;
+      background: var(--slate-100); color: var(--slate-600);
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+    }
+
+    /* ── Architecture ── */
+    .arch-diagram {
+      background: var(--slate-900); color: var(--slate-300); padding: 32px;
+      border-radius: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px; line-height: 1.7; overflow-x: auto; white-space: pre;
+    }
+    .arch-diagram .hl-blue { color: #93c5fd; }
+    .arch-diagram .hl-green { color: #86efac; }
+    .arch-diagram .hl-purple { color: #c4b5fd; }
+    .arch-diagram .hl-amber { color: #fcd34d; }
+    .arch-diagram .hl-dim { color: var(--slate-500); }
+
+    /* ── Tech Stack ── */
+    .stack-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    @media (max-width: 768px) { .stack-grid { grid-template-columns: 1fr; } }
+    .stack-card { background: white; border: 1px solid var(--slate-200); border-radius: 12px; padding: 28px; }
+    .stack-card h3 { font-size: 14px; font-weight: 700; color: var(--slate-900); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .stack-item { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+    .stack-item .stack-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .stack-item span { font-size: 14px; color: var(--slate-700); }
+    .stack-item small { font-size: 12px; color: var(--slate-400); margin-left: auto; }
+
+    /* ── API Table ── */
+    .api-table { width: 100%; border-collapse: separate; border-spacing: 0; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    .api-table th { background: var(--slate-800); color: white; padding: 12px 20px; text-align: left; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .api-table td { padding: 10px 20px; font-size: 14px; border-bottom: 1px solid var(--slate-100); }
+    .api-table tbody tr:nth-child(even) { background: var(--slate-50); }
+    .api-table tbody tr:nth-child(odd) { background: white; }
+    .api-table tr:last-child td { border-bottom: none; }
+    .api-method {
+      display: inline-block; padding: 2px 8px; border-radius: 4px;
+      font-family: monospace; font-size: 12px; font-weight: 700; min-width: 54px; text-align: center;
+    }
+    .method-get { background: var(--emerald-50); color: var(--emerald-700); }
+    .method-post { background: var(--blue-50); color: var(--blue-600); }
+    .method-patch { background: var(--amber-50); color: var(--amber-600); }
+    .api-path { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 13px; color: var(--slate-700); }
+
+    /* ── File Tree ── */
+    .file-tree {
+      background: var(--slate-900); color: var(--slate-300); padding: 28px 32px;
+      border-radius: 12px; font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px; line-height: 1.8; overflow-x: auto;
+    }
+    .file-tree .dir { color: #93c5fd; font-weight: 600; }
+    .file-tree .file { color: var(--slate-400); }
+    .file-tree .comment { color: var(--slate-600); }
+
+    /* ── Stats Counters ── */
+    .stats-bar {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+      padding: 40px 0;
+    }
+    @media (max-width: 768px) { .stats-bar { grid-template-columns: repeat(2, 1fr); } }
+    .stat-item { text-align: center; }
+    .stat-item .stat-number { font-size: 40px; font-weight: 800; color: var(--indigo-600); }
+    .stat-item .stat-label { font-size: 14px; color: var(--slate-500); margin-top: 4px; }
+
+    /* ── Data Flow ── */
+    .flow-steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+    @media (max-width: 768px) { .flow-steps { grid-template-columns: repeat(2, 1fr); } }
+    .flow-step {
+      background: white; border: 1px solid var(--slate-200); border-radius: 12px;
+      padding: 24px; text-align: center; position: relative;
+    }
+    .flow-step::after {
+      content: '\2192'; position: absolute; right: -14px; top: 50%;
+      transform: translateY(-50%); font-size: 20px; color: var(--slate-300);
+    }
+    .flow-step:last-child::after { display: none; }
+    .flow-step .step-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--indigo-50); color: var(--indigo-600);
+      font-size: 16px; font-weight: 700; margin-bottom: 12px;
+    }
+    .flow-step h4 { font-size: 15px; font-weight: 700; color: var(--slate-900); margin-bottom: 6px; }
+    .flow-step p { font-size: 13px; color: var(--slate-500); }
+
+    /* ── Design Decisions ── */
+    .decisions-list { display: flex; flex-direction: column; gap: 16px; }
+    .decision-item {
+      background: white; border: 1px solid var(--slate-200); border-radius: 12px;
+      padding: 24px; display: flex; gap: 20px;
+    }
+    .decision-item .decision-icon {
+      flex-shrink: 0; width: 40px; height: 40px; border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .decision-item h4 { font-size: 15px; font-weight: 700; color: var(--slate-900); margin-bottom: 4px; }
+    .decision-item p { font-size: 14px; color: var(--slate-600); }
+    .decision-item .decision-tag {
+      display: inline-block; margin-top: 8px; padding: 2px 10px;
+      border-radius: 6px; font-size: 12px; font-weight: 500;
+    }
+    .tag-correctness { background: var(--emerald-50); color: var(--emerald-700); }
+    .tag-performance { background: var(--blue-50); color: var(--blue-600); }
+    .tag-flexibility { background: var(--purple-50); color: var(--purple-600); }
+    .tag-safety { background: var(--amber-50); color: var(--amber-600); }
+
+    /* ── Test Results ── */
+    .test-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; }
+    .test-item {
+      background: white; border: 1px solid var(--slate-200); border-radius: 10px;
+      padding: 16px; display: flex; align-items: center; justify-content: space-between;
+    }
+    .test-item .test-module { font-size: 13px; font-weight: 600; color: var(--slate-700); }
+    .test-item .test-count {
+      background: var(--emerald-50); color: var(--emerald-700);
+      padding: 2px 10px; border-radius: 12px; font-size: 13px; font-weight: 700;
+    }
+
+    /* ── Frontend Preview ── */
+    .preview-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; }
+    @media (max-width: 768px) { .preview-grid { grid-template-columns: 1fr; } }
+    .preview-card {
+      background: white; border: 1px solid var(--slate-200); border-radius: 12px;
+      overflow: hidden;
+    }
+    .preview-card .preview-header {
+      background: var(--slate-800); padding: 10px 16px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .preview-card .preview-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .preview-card .preview-dot:nth-child(1) { background: #ef4444; }
+    .preview-card .preview-dot:nth-child(2) { background: #f59e0b; }
+    .preview-card .preview-dot:nth-child(3) { background: #10b981; }
+    .preview-card .preview-url { margin-left: 12px; font-size: 12px; color: var(--slate-400); font-family: monospace; }
+    .preview-body { padding: 20px; }
+    .preview-body h4 { font-size: 15px; font-weight: 700; color: var(--slate-900); margin-bottom: 4px; }
+    .preview-body p { font-size: 13px; color: var(--slate-500); margin-bottom: 12px; }
+    .preview-features { list-style: none; }
+    .preview-features li { font-size: 13px; color: var(--slate-600); padding: 3px 0; padding-left: 18px; position: relative; }
+    .preview-features li::before { content: '\2713'; position: absolute; left: 0; color: var(--emerald-500); font-weight: 700; }
+
+    /* ── Footer ── */
+    .footer {
+      background: var(--slate-900); color: var(--slate-400);
+      padding: 40px 0; text-align: center; font-size: 14px;
+    }
+    .footer a { color: var(--indigo-500); text-decoration: none; }
+  </style>
+</head>
+<body>
+
+  <!-- ════════ Hero ════════ -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1><span>Experimentor</span></h1>
+      <p>A production-grade A/B testing platform with 10 statistical methods, from frequentist hypothesis tests to multi-armed bandits.</p>
+      <div class="hero-badges">
+        <span class="hero-badge"><span class="dot dot-green"></span> 303 tests passing</span>
+        <span class="hero-badge"><span class="dot dot-blue"></span> 10 statistical methods</span>
+        <span class="hero-badge"><span class="dot dot-purple"></span> Full-stack (FastAPI + React)</span>
+        <span class="hero-badge"><span class="dot dot-amber"></span> Google-interview level</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ════════ Stats Bar ════════ -->
+  <div class="container">
+    <div class="stats-bar">
+      <div class="stat-item">
+        <div class="stat-number">10</div>
+        <div class="stat-label">Statistical Methods</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">303</div>
+        <div class="stat-label">Unit Tests</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">12</div>
+        <div class="stat-label">API Endpoints</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-number">23</div>
+        <div class="stat-label">Frontend Components</div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Comparison Table ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>What Sets This Apart</h2>
+        <p>Most A/B tools implement a t-test and call it done. Experimentor implements the same methods used at Google, Netflix, and Microsoft.</p>
+      </div>
+      <table class="comparison-table">
+        <thead>
+          <tr>
+            <th>Capability</th>
+            <th>Basic A/B Tool</th>
+            <th>Experimentor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Hypothesis testing</td>
+            <td>Student's t-test (assumes equal variance)</td>
+            <td>Welch's t-test (no equal variance assumption)</td>
+          </tr>
+          <tr>
+            <td>Peeking at results</td>
+            <td>Inflates false positive rate to ~14.6%</td>
+            <td>Group sequential testing (O'Brien-Fleming spending)</td>
+          </tr>
+          <tr>
+            <td>Continuous monitoring</td>
+            <td><span class="cross">Not supported</span></td>
+            <td>Always-valid confidence sequences (mSPRT)</td>
+          </tr>
+          <tr>
+            <td>Bayesian analysis</td>
+            <td>P(B&gt;A) only</td>
+            <td>Full posterior: P(B&gt;A), expected loss, ROPE</td>
+          </tr>
+          <tr>
+            <td>Multiple metrics</td>
+            <td>64% false positive rate with 20 metrics</td>
+            <td>Bonferroni, Holm, Benjamini-Hochberg FDR</td>
+          </tr>
+          <tr>
+            <td>Traffic optimization</td>
+            <td>Fixed 50/50 split</td>
+            <td>Thompson Sampling, UCB1, Epsilon-Greedy</td>
+          </tr>
+          <tr>
+            <td>Variance reduction</td>
+            <td><span class="cross">None</span></td>
+            <td>CUPED (30-50% variance reduction)</td>
+          </tr>
+          <tr>
+            <td>Effect stability</td>
+            <td>Declares winner on day 1</td>
+            <td>Novelty/primacy detection via trend regression</td>
+          </tr>
+          <tr>
+            <td>Power analysis</td>
+            <td>Manual calculation</td>
+            <td>Interactive calculator with power curves</td>
+          </tr>
+          <tr>
+            <td>Segment analysis</td>
+            <td><span class="cross">None</span></td>
+            <td>Heterogeneous treatment effects + Cochran's Q</td>
+          </tr>
+          <tr>
+            <td>Traffic splitting</td>
+            <td>Random (non-reproducible)</td>
+            <td>Deterministic SHA-256 hashing</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Statistical Methods ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>10 Statistical Methods</h2>
+        <p>Each method answers a specific business question about your experiment.</p>
+      </div>
+      <div class="methods-grid">
+        <div class="method-card">
+          <div class="method-number">1</div>
+          <h3>Welch's T-Test</h3>
+          <div class="method-question">"Is variant B significantly different from A?"</div>
+          <p>Compares means without assuming equal variances. Uses Welch-Satterthwaite degrees of freedom approximation. Also includes z-test for proportions and chi-squared for contingency tables.</p>
+          <span class="method-tag">frequentist.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">2</div>
+          <h3>Sequential Testing</h3>
+          <div class="method-question">"Can I peek at results without inflating false positives?"</div>
+          <p>O'Brien-Fleming and Pocock alpha-spending via the Lan-DeMets framework. Checking 5 times at alpha=0.05 inflates FPR to 14.6% -- sequential boundaries keep it at exactly 5%.</p>
+          <span class="method-tag">sequential.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">3</div>
+          <h3>Confidence Sequences</h3>
+          <div class="method-question">"Can I monitor results continuously on a dashboard?"</div>
+          <p>Normal-mixture mSPRT confidence sequences valid at any sample size, including data-dependent stopping times. No pre-planning of analysis schedule required.</p>
+          <span class="method-tag">confidence_sequence.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">4</div>
+          <h3>Bayesian A/B Testing</h3>
+          <div class="method-question">"What's the probability B is better, and what do I lose if wrong?"</div>
+          <p>Beta-Binomial for conversions, Normal-Normal for continuous metrics. Computes P(B&gt;A), expected loss, and ROPE analysis via 100K Monte Carlo samples.</p>
+          <span class="method-tag">bayesian.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">5</div>
+          <h3>Multi-Armed Bandits</h3>
+          <div class="method-question">"Can we auto-shift traffic to the winning variant?"</div>
+          <p>Thompson Sampling (optimal Bayesian exploration-exploitation), UCB1 (deterministic upper confidence bounds), Epsilon-Greedy (simple baseline). Reduces opportunity cost during experiments.</p>
+          <span class="method-tag">bandit.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">6</div>
+          <h3>CUPED Variance Reduction</h3>
+          <div class="method-question">"Can I make the experiment faster by reducing noise?"</div>
+          <p>Regresses out pre-experiment user behavior: Y_adj = Y - &theta;(X - E[X]). Reduces variance by 1 - &rho;&sup2; (typically 30-50%), equivalent to doubling sample size for free.</p>
+          <span class="method-tag">cuped.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">7</div>
+          <h3>Multiple Testing Correction</h3>
+          <div class="method-question">"How do I avoid false discoveries when testing 20 metrics?"</div>
+          <p>Bonferroni (conservative FWER), Holm step-down (more powerful FWER), Benjamini-Hochberg (controls FDR, best for 10+ metrics). Without correction: 64% false positive risk.</p>
+          <span class="method-tag">multiple_testing.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">8</div>
+          <h3>Power Analysis</h3>
+          <div class="method-question">"How many users do I need to detect a real effect?"</div>
+          <p>Sample size calculation, minimum detectable effect (via Brent's method), power curves, and duration estimation. Supports binomial and continuous metrics.</p>
+          <span class="method-tag">power_analysis.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">9</div>
+          <h3>Novelty / Primacy Detection</h3>
+          <div class="method-question">"Is the effect real or are users just reacting to change?"</div>
+          <p>Weighted linear regression of daily treatment effects. Detects decaying effects (novelty) and growing effects (primacy). Prevents premature winner declaration.</p>
+          <span class="method-tag">novelty_detection.py</span>
+        </div>
+        <div class="method-card">
+          <div class="method-number">10</div>
+          <h3>Segment Analysis</h3>
+          <div class="method-question">"Does the treatment work differently for different users?"</div>
+          <p>Per-segment A/B tests with Cochran's Q heterogeneity test using inverse-variance weighting. Detects when an overall null hides a strong subgroup effect.</p>
+          <span class="method-tag">segment_analysis.py</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Architecture ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Architecture</h2>
+        <p>Layered design separating HTTP concerns, business logic, and pure statistical computation.</p>
+      </div>
+
+      <div class="arch-diagram"><span class="hl-dim">// System Layers</span>
+
+<span class="hl-blue">+-----------------------------------------------------------------------+</span>
+<span class="hl-blue">|                        API Layer (FastAPI)                            |</span>
+<span class="hl-blue">|  experiments.py | events.py | analysis.py | power.py | assign.py     |</span>
+<span class="hl-blue">+-----------------------------------------------------------------------+</span>
+                                    |
+<span class="hl-green">+-----------------------------------------------------------------------+</span>
+<span class="hl-green">|                         Service Layer                                 |</span>
+<span class="hl-green">|  experiment_service | event_service | analysis_service | assignment   |</span>
+<span class="hl-green">+-----------------------------------------------------------------------+</span>
+                           |                    |
+              +------------+           +--------+--------+
+              |                        |                 |
+<span class="hl-purple">+---------------------+  +---------------+  +---------------------+</span>
+<span class="hl-purple">|  Data Access Layer  |  | Stats Engine  |  | Assignment Engine   |</span>
+<span class="hl-purple">|  SQLAlchemy 2.0     |  | Pure funcs    |  | SHA-256 hashing     |</span>
+<span class="hl-purple">|  (async)            |  | (stateless)   |  | (stateless)         |</span>
+<span class="hl-purple">+---------------------+  +---------------+  +---------------------+</span>
+              |
+<span class="hl-amber">+---------------------+</span>
+<span class="hl-amber">|  PostgreSQL 16      |</span>
+<span class="hl-amber">|  + Redis 7          |</span>
+<span class="hl-amber">+---------------------+</span></div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Data Flow ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>How It Works</h2>
+        <p>Four-phase data flow from experiment creation to statistical analysis.</p>
+      </div>
+      <div class="flow-steps">
+        <div class="flow-step">
+          <div class="step-num">1</div>
+          <h4>Create</h4>
+          <p>Define experiment with variants, metrics, and analysis type</p>
+        </div>
+        <div class="flow-step">
+          <div class="step-num">2</div>
+          <h4>Assign</h4>
+          <p>SHA-256 hashing maps each user to a variant deterministically</p>
+        </div>
+        <div class="flow-step">
+          <div class="step-num">3</div>
+          <h4>Collect</h4>
+          <p>Ingest events with metric values (single or batch up to 1,000)</p>
+        </div>
+        <div class="flow-step">
+          <div class="step-num">4</div>
+          <h4>Analyze</h4>
+          <p>Run statistical tests and get ship/don't-ship recommendation</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Tech Stack ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Tech Stack</h2>
+        <p>Modern, production-ready technologies across the full stack.</p>
+      </div>
+      <div class="stack-grid">
+        <div class="stack-card">
+          <h3>Backend</h3>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--blue-500)"></span><span>Python 3.12</span><small>Runtime</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--emerald-500)"></span><span>FastAPI + Uvicorn</span><small>Web framework</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--purple-500)"></span><span>SQLAlchemy 2.0 (async)</span><small>ORM</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--amber-500)"></span><span>Pydantic v2</span><small>Validation</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--red-500)"></span><span>NumPy + SciPy</span><small>Stats engine</small></div>
+        </div>
+        <div class="stack-card">
+          <h3>Frontend</h3>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--blue-500)"></span><span>React 18 + TypeScript</span><small>UI framework</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--purple-500)"></span><span>Vite</span><small>Build tool</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--emerald-500)"></span><span>Tailwind CSS v4</span><small>Styling</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--amber-500)"></span><span>TanStack Query</span><small>Server state</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--red-500)"></span><span>Recharts</span><small>Charts</small></div>
+        </div>
+        <div class="stack-card">
+          <h3>Infrastructure</h3>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--blue-500)"></span><span>PostgreSQL 16</span><small>Database</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--red-500)"></span><span>Redis 7</span><small>Cache</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--emerald-500)"></span><span>Docker Compose</span><small>Orchestration</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--purple-500)"></span><span>pytest (303 tests)</span><small>Testing</small></div>
+          <div class="stack-item"><span class="stack-dot" style="background:var(--amber-500)"></span><span>Alembic</span><small>Migrations</small></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ API ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>REST API</h2>
+        <p>12 endpoints under <code>/api/v1</code> with Swagger documentation at <code>/docs</code>.</p>
+      </div>
+      <table class="api-table">
+        <thead>
+          <tr><th>Method</th><th>Endpoint</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="api-method method-get">GET</span></td>
+            <td class="api-path">/health</td>
+            <td>Health check</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/experiments/</td>
+            <td>Create experiment with variants and metrics</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-get">GET</span></td>
+            <td class="api-path">/experiments/</td>
+            <td>List experiments (paginated, filterable by status)</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-get">GET</span></td>
+            <td class="api-path">/experiments/{id}</td>
+            <td>Get experiment details</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-patch">PATCH</span></td>
+            <td class="api-path">/experiments/{id}</td>
+            <td>Update experiment configuration</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/experiments/{id}/start</td>
+            <td>Start experiment (draft &rarr; running)</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/experiments/{id}/stop</td>
+            <td>Stop experiment (running &rarr; completed)</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-get">GET</span></td>
+            <td class="api-path">/experiments/{id}/results</td>
+            <td>Run statistical analysis and return results</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/events/</td>
+            <td>Ingest a single event</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/events/batch</td>
+            <td>Ingest events in batch (up to 1,000)</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-get">GET</span></td>
+            <td class="api-path">/assign/{experiment_id}/{user_id}</td>
+            <td>Get deterministic variant assignment</td>
+          </tr>
+          <tr>
+            <td><span class="api-method method-post">POST</span></td>
+            <td class="api-path">/power/sample-size</td>
+            <td>Calculate required sample size</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Frontend Pages ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Frontend Dashboard</h2>
+        <p>React 18 + TypeScript + Tailwind CSS with 4 pages and 14 reusable components.</p>
+      </div>
+      <div class="preview-grid">
+        <div class="preview-card">
+          <div class="preview-header">
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-url">localhost:5173/</span>
+          </div>
+          <div class="preview-body">
+            <h4>Dashboard</h4>
+            <p>Overview of all experiments with filtering and pagination.</p>
+            <ul class="preview-features">
+              <li>Summary metric cards (total, running, completed, draft)</li>
+              <li>Status filter tabs (All / Draft / Running / Completed)</li>
+              <li>Clickable experiment rows with status badges</li>
+              <li>Pagination for large experiment lists</li>
+            </ul>
+          </div>
+        </div>
+        <div class="preview-card">
+          <div class="preview-header">
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-url">localhost:5173/experiments/new</span>
+          </div>
+          <div class="preview-body">
+            <h4>Create Experiment</h4>
+            <p>Form to define hypothesis, variants, and metrics.</p>
+            <ul class="preview-features">
+              <li>Basic info: name, hypothesis, description, analysis type</li>
+              <li>Dynamic variant editor (add/remove, traffic %)</li>
+              <li>Dynamic metric editor (type, data type selectors)</li>
+              <li>Validation: name required, traffic sums to 100%</li>
+            </ul>
+          </div>
+        </div>
+        <div class="preview-card">
+          <div class="preview-header">
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-url">localhost:5173/experiments/:id</span>
+          </div>
+          <div class="preview-body">
+            <h4>Experiment Detail</h4>
+            <p>Full experiment view with results and actions.</p>
+            <ul class="preview-features">
+              <li>Start/Stop buttons based on state machine</li>
+              <li>Variant cards with control badge and traffic %</li>
+              <li>Recommendation card (ship / don't ship / keep running)</li>
+              <li>Confidence interval chart + metrics table</li>
+            </ul>
+          </div>
+        </div>
+        <div class="preview-card">
+          <div class="preview-header">
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-dot"></span>
+            <span class="preview-url">localhost:5173/power</span>
+          </div>
+          <div class="preview-body">
+            <h4>Power Analysis</h4>
+            <p>Interactive calculator with real-time power curves.</p>
+            <ul class="preview-features">
+              <li>Sliders for baseline rate, MDE, alpha, power</li>
+              <li>Sample size per variant and total</li>
+              <li>Estimated experiment duration in days</li>
+              <li>Recharts power curve visualization</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Design Decisions ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Key Design Decisions</h2>
+        <p>Every choice has a rationale and a documented tradeoff.</p>
+      </div>
+      <div class="decisions-list">
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--emerald-50)">&#x2713;</div>
+          <div>
+            <h4>Welch's t-test over Student's t-test</h4>
+            <p>Student's t-test assumes equal variances -- almost always wrong in A/B tests since the treatment changes the distribution. Welch's loses &lt;0.1% power at typical sample sizes.</p>
+            <span class="decision-tag tag-correctness">Correctness</span>
+          </div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--blue-50)">#</div>
+          <div>
+            <h4>SHA-256 deterministic hashing over random assignment</h4>
+            <p>Same user always gets same variant with zero server-side state. Assignment can be computed at any layer (client, CDN edge, backend). Same approach as Google, Meta, Netflix.</p>
+            <span class="decision-tag tag-performance">Performance</span>
+          </div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--purple-50)">&lambda;</div>
+          <div>
+            <h4>Both Bayesian and Frequentist as first-class citizens</h4>
+            <p>Different teams have different statistical cultures. Rather than forcing a paradigm, the user chooses analysis_type at experiment creation. Mirrors how Statsig and Eppo work.</p>
+            <span class="decision-tag tag-flexibility">Flexibility</span>
+          </div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--amber-50)">&mu;</div>
+          <div>
+            <h4>Expected Loss + P(B&gt;A) for Bayesian decisions</h4>
+            <p>P(B&gt;A) = 96% sounds great, but if B is only 0.001% better when it wins and 5% worse when it loses, the expected loss is high. Dual threshold: P(B&gt;A) &gt; 0.95 AND loss &lt; 0.001.</p>
+            <span class="decision-tag tag-safety">Safety</span>
+          </div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--emerald-50)">&darr;</div>
+          <div>
+            <h4>Pure-function stats engine with frozen dataclasses</h4>
+            <p>No database imports, no HTTP dependencies. 303 tests with no fixtures or mocking. Reusable in Jupyter, CLI, or streaming pipelines. Immutable results prevent accidental mutation.</p>
+            <span class="decision-tag tag-correctness">Correctness</span>
+          </div>
+        </div>
+        <div class="decision-item">
+          <div class="decision-icon" style="background:var(--blue-50)">&uarr;</div>
+          <div>
+            <h4>BigInteger PK on events table, not UUID</h4>
+            <p>Events is the high-volume table. Sequential BigInteger inserts are B-tree friendly; random UUID inserts cause page splits and write amplification.</p>
+            <span class="decision-tag tag-performance">Performance</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Test Results ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Test Coverage: 303 Tests</h2>
+        <p>Every statistical method is independently tested with edge cases, known results, and property-based checks.</p>
+      </div>
+      <div class="test-grid">
+        <div class="test-item"><span class="test-module">Frequentist</span><span class="test-count">14</span></div>
+        <div class="test-item"><span class="test-module">Power Analysis</span><span class="test-count">11</span></div>
+        <div class="test-item"><span class="test-module">Sequential</span><span class="test-count">35</span></div>
+        <div class="test-item"><span class="test-module">Confidence Seq.</span><span class="test-count">33</span></div>
+        <div class="test-item"><span class="test-module">Bayesian</span><span class="test-count">48</span></div>
+        <div class="test-item"><span class="test-module">Bandit</span><span class="test-count">54</span></div>
+        <div class="test-item"><span class="test-module">CUPED</span><span class="test-count">20</span></div>
+        <div class="test-item"><span class="test-module">Multiple Testing</span><span class="test-count">33</span></div>
+        <div class="test-item"><span class="test-module">Novelty Detection</span><span class="test-count">26</span></div>
+        <div class="test-item"><span class="test-module">Assignment</span><span class="test-count">5</span></div>
+        <div class="test-item"><span class="test-module">Segment Analysis</span><span class="test-count">12</span></div>
+        <div class="test-item"><span class="test-module">Integration (E2E)</span><span class="test-count">12</span></div>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- ════════ Project Structure ════════ -->
+  <section class="section">
+    <div class="container">
+      <div class="section-header">
+        <h2>Project Structure</h2>
+        <p>Clean separation between backend, frontend, stats engine, and infrastructure.</p>
+      </div>
+      <div class="file-tree"><span class="dir">ab-testing-platform/</span>
+├── <span class="file">docker-compose.yml</span>          <span class="comment"># PostgreSQL 16 + Redis 7 + backend</span>
+├── <span class="file">README.md</span>                    <span class="comment"># 259 lines</span>
+├── <span class="dir">docs/</span>
+│   ├── <span class="file">ARCHITECTURE.md</span>          <span class="comment"># 536 lines - system design doc</span>
+│   └── <span class="file">STATISTICAL_METHODS.md</span>   <span class="comment"># 1,625 lines - math foundations</span>
+├── <span class="dir">backend/</span>
+│   ├── <span class="file">Dockerfile</span>
+│   ├── <span class="file">pyproject.toml</span>
+│   ├── <span class="dir">app/</span>
+│   │   ├── <span class="file">main.py</span>              <span class="comment"># FastAPI app, CORS, lifespan</span>
+│   │   ├── <span class="file">config.py</span>            <span class="comment"># Pydantic settings</span>
+│   │   ├── <span class="file">db.py</span>                <span class="comment"># Async SQLAlchemy engine</span>
+│   │   ├── <span class="dir">api/</span>                 <span class="comment"># 6 route modules (12 endpoints)</span>
+│   │   ├── <span class="dir">models/</span>              <span class="comment"># Experiment, Variant, Metric, Event, Assignment</span>
+│   │   ├── <span class="dir">schemas/</span>             <span class="comment"># Pydantic request/response models</span>
+│   │   ├── <span class="dir">services/</span>            <span class="comment"># Business logic layer</span>
+│   │   └── <span class="dir">stats/</span>               <span class="comment"># 10 pure-function stat modules</span>
+│   │       ├── <span class="file">base.py</span>          <span class="comment"># Frozen result dataclasses</span>
+│   │       ├── <span class="file">frequentist.py</span>   <span class="comment"># Welch's t-test, z-test, chi-squared</span>
+│   │       ├── <span class="file">sequential.py</span>    <span class="comment"># O'Brien-Fleming, Pocock</span>
+│   │       ├── <span class="file">confidence_sequence.py</span>  <span class="comment"># mSPRT</span>
+│   │       ├── <span class="file">bayesian.py</span>      <span class="comment"># Beta-Binomial, Normal-Normal, ROPE</span>
+│   │       ├── <span class="file">bandit.py</span>        <span class="comment"># Thompson, UCB1, Epsilon-Greedy</span>
+│   │       ├── <span class="file">cuped.py</span>         <span class="comment"># CUPED variance reduction</span>
+│   │       ├── <span class="file">multiple_testing.py</span>    <span class="comment"># Bonferroni, Holm, BH-FDR</span>
+│   │       ├── <span class="file">power_analysis.py</span>     <span class="comment"># Sample size, MDE, power curves</span>
+│   │       ├── <span class="file">novelty_detection.py</span>  <span class="comment"># Trend regression</span>
+│   │       └── <span class="file">segment_analysis.py</span>   <span class="comment"># Cochran's Q heterogeneity</span>
+│   ├── <span class="dir">tests/</span>                   <span class="comment"># 303 unit + integration tests</span>
+│   └── <span class="dir">scripts/</span>
+│       ├── <span class="file">seed_demo.py</span>         <span class="comment"># 3 experiments, 150K events</span>
+│       └── <span class="file">simulate_experiment.py</span> <span class="comment"># End-to-end demo of all 9 methods</span>
+└── <span class="dir">frontend/</span>
+    ├── <span class="file">vite.config.ts</span>
+    └── <span class="dir">src/</span>
+        ├── <span class="dir">api/</span>                 <span class="comment"># Typed fetch client</span>
+        ├── <span class="dir">hooks/</span>               <span class="comment"># TanStack Query hooks</span>
+        ├── <span class="dir">types/</span>               <span class="comment"># TypeScript interfaces</span>
+        ├── <span class="dir">components/</span>
+        │   ├── <span class="dir">analysis/</span>        <span class="comment"># CI chart, metrics table, results summary</span>
+        │   ├── <span class="dir">common/</span>          <span class="comment"># MetricCard, StatusBadge, ConfidenceBand</span>
+        │   ├── <span class="dir">layout/</span>          <span class="comment"># Sidebar, Header</span>
+        │   └── <span class="dir">power/</span>           <span class="comment"># Interactive power calculator</span>
+        └── <span class="dir">pages/</span>
+            ├── <span class="file">Dashboard.tsx</span>    <span class="comment"># Experiment list + filters</span>
+            ├── <span class="file">CreateExperiment.tsx</span>  <span class="comment"># Dynamic form</span>
+            ├── <span class="file">ExperimentPage.tsx</span>   <span class="comment"># Detail + results</span>
+            └── <span class="file">PowerAnalysis.tsx</span>    <span class="comment"># Power calculator page</span></div>
+    </div>
+  </section>
+
+  <!-- ════════ Footer ════════ -->
+  <footer class="footer">
+    <div class="container">
+      <p><strong>Experimentor</strong> &mdash; A/B Testing Platform</p>
+      <p style="margin-top: 8px;">Built with Python, FastAPI, React, NumPy, SciPy &mdash; MIT License</p>
+    </div>
+  </footer>
+
+</body>
+</html>
