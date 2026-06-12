@@ -1,341 +1,146 @@
 # Experimentor
 
-You want to test whether a change -- a new button color, a different checkout flow, a redesigned landing page -- actually improves a metric you care about. You split users into two groups: **Group A** sees the original, **Group B** sees the change. You collect data from both groups and compare.
-
-That comparison is where things get tricky. A naive approach gives you wrong answers more often than you'd expect. This platform implements 10 methods to get the comparison right.
+Full-stack A/B testing platform. 10 statistical methods, 303 tests, FastAPI + React.
 
 ---
 
-## How the 10 Methods Work (and Why Each One Matters)
+## The Setup
 
-### 1. Is B actually different from A? — Welch's T-Test
+Group A sees the current experience. Group B sees the change. Both groups generate data -- conversions, revenue, session duration. The question: is the difference between A and B real, or noise?
 
-You collect a metric (say, revenue per user) from Group A and Group B. You compute the mean of each group. But the means will always differ slightly just from random chance -- even if the change did nothing. The question is whether the gap is big enough to be real.
-
-**The problem with the simple approach:** Student's t-test assumes both groups have the same variance. That's almost never true in A/B tests -- the change itself shifts the distribution. If you use it anyway, your confidence intervals are wrong.
-
-**What we do instead:** Welch's t-test drops the equal-variance assumption. It estimates degrees of freedom from each group's own variance (Welch-Satterthwaite approximation). For proportions (converted or not), we use an unpooled z-test. Both tell you: "given the data from A and B, here's the effect size, a confidence interval, and a p-value."
-
-### 2. Can I check results early without fooling myself? — Sequential Testing
-
-You launch the experiment and look at the dashboard on day 3. Not significant. You look again on day 5, day 7, day 10, day 14. On day 14 you see p=0.04 and declare a winner.
-
-**The problem:** Every time you peek, you give randomness another chance to look significant. Peeking 5 times at alpha=0.05 inflates your real false positive rate to about 14.6%. You think you have 95% confidence, but you actually have 85%.
-
-**What we do instead:** O'Brien-Fleming alpha-spending. Instead of spending your entire alpha=0.05 budget on one test, you pre-plan how many times you'll look and "spend" small slices of alpha at each look. Early looks have very tight boundaries (hard to reject), later looks have looser ones. The total false positive rate across all looks stays at exactly 5%.
-
-### 3. What if I don't know when I'll check? — Confidence Sequences
-
-Sequential testing requires pre-planning how many times you'll look. But what if your team watches a live dashboard and could stop the experiment any time?
-
-**What we do:** Confidence sequences (mixture Sequential Probability Ratio Test). These produce confidence intervals that are valid at *every* sample size simultaneously. You can check every hour, every day, or only once -- the guarantee holds regardless. The tradeoff: the intervals are wider than fixed-horizon CIs early on, so you need more data to reach significance.
-
-### 4. What's the probability B is actually better? — Bayesian Testing
-
-Frequentist tests give you a p-value: "if B were no different from A, how unlikely is the data I observed?" That answers the question backwards. What you really want to know is: "given the data, what's the probability B is better?"
-
-**What we do:** For conversion metrics, we use a Beta-Binomial model. Start with a flat prior (Beta(1,1) -- no opinion), observe conversions and non-conversions, get a posterior distribution over each group's true rate. Then we sample 100,000 times from both posteriors and directly compute:
-- **P(B > A):** How often B's sampled rate beats A's.
-- **Expected loss:** If you ship B and you're wrong, how much do you lose on average? This prevents the trap where P(B>A) = 96% but B is only 0.001% better when it wins and 5% worse when it loses.
-- **ROPE analysis:** Is the difference practically meaningful, or just statistically non-zero?
-
-Ship decision requires *both* P(B>A) > 0.95 *and* expected loss < 0.1%.
-
-### 5. Can we send more traffic to the winner while testing? — Multi-Armed Bandits
-
-With a fixed 50/50 split, half your users get the worse experience for the entire experiment. Bandits dynamically shift traffic toward the variant that's performing better, reducing the total cost of experimentation.
-
-**What the data tells the bandit:** Each group's conversion rate updates a reward estimate. The bandit uses these estimates to decide where to send the next user:
-- **Thompson Sampling:** Sample from each variant's Beta posterior, send the user to whichever sampled highest. Naturally balances exploration (trying uncertain options) and exploitation (using the current best).
-- **UCB1:** Send users to the variant with the highest `mean + exploration_bonus`. Deterministic, no randomness.
-- **Epsilon-Greedy:** Send 90% of traffic to the best variant, 10% random. Simple baseline.
-
-### 6. Can we make the experiment faster? — CUPED Variance Reduction
-
-A user who spent $200 last month is likely to spend more this month than a user who spent $5 -- regardless of which group they're in. This natural variation adds noise to your A/B test, making it harder to detect a real effect.
-
-**What we do:** CUPED (Controlled-experiment Using Pre-Experiment Data) subtracts out this predictable variation. For each user, we adjust: `Y_adjusted = Y - theta * (X - average(X))`, where X is their pre-experiment behavior. This reduces variance by `1 - correlation^2`. With typical correlations of 0.5-0.7, that's 25-50% less noise -- equivalent to doubling your sample size for free. The adjustment is provably unbiased because `average(X - average(X)) = 0` by construction.
-
-### 7. What if I'm testing 20 metrics at once? — Multiple Testing Correction
-
-You measure conversion, revenue, session time, page views, bounce rate, and 15 other metrics. Even if B has zero effect on everything, there's a `1 - 0.95^20 = 64%` chance at least one metric shows p < 0.05 by pure chance.
-
-**What we do:** Adjust the significance threshold:
-- **Bonferroni:** Divide alpha by the number of tests. Simple, conservative.
-- **Holm (step-down):** Strictly more powerful than Bonferroni -- tests the smallest p-value at alpha/n, the second-smallest at alpha/(n-1), and so on. No reason to ever prefer Bonferroni over Holm.
-- **Benjamini-Hochberg:** Controls the *false discovery rate* rather than the chance of any single false positive. Much more lenient, best when you have 10+ exploratory metrics and accept that some "significant" results may be false.
-
-### 8. How many users do I need? — Power Analysis
-
-Before running the experiment: how large does each group need to be to detect an effect of a given size?
-
-**What the data tells you (in advance):** Given your baseline conversion rate (say 10%), how big an improvement you want to detect (say 1 percentage point), and your tolerance for false negatives (typically 20%), the power calculator computes the required sample size per variant. It also plots a *power curve* showing how detection ability changes with effect size, and estimates how many days the experiment will take given your daily traffic.
-
-### 9. Is the effect real or just novelty? — Novelty/Primacy Detection
-
-You launch a new checkout flow. Conversion jumps 15% in week 1, 8% in week 2, 3% in week 3. Users were reacting to the novelty of change, not the quality of the new design. If you stopped on day 7, you'd massively overestimate the long-term effect.
-
-**What we do:** Compute the daily treatment effect (B minus A) for each day, then fit a weighted linear regression over time. If the slope is significantly negative, the effect is decaying (novelty). If significantly positive, it's growing (primacy -- users learning a new flow). If flat, the effect is stable and trustworthy.
-
-### 10. Does B work differently for different users? — Segment Analysis
-
-Overall, B shows no significant effect. But when you split by platform, B is +12% on mobile and -8% on desktop. The overall average hides real heterogeneity.
-
-**What we do:** Run the A/B test independently within each user segment (country, platform, cohort, etc.), then test whether the effects differ across segments using Cochran's Q test with inverse-variance weighting. Multiple testing correction is applied across segments to prevent false discoveries.
+Each method below answers a different part of that question.
 
 ---
 
-## When Methods Disagree: What Each One Tells You
+## What Each Method Tells You
 
-In the simulation above, all 10 methods agreed: ship the blue button. In real experiments, they often don't. Here's how to read each result and what to do when they conflict.
+**1. Welch's t-test** -- Compares the means of A and B. Tells you whether the observed difference is statistically significant without assuming both groups have equal variance. Outputs a p-value and confidence interval.
 
-### The core question: Is B better than A?
+**2. Sequential testing** -- Same comparison, but lets you check results at pre-planned intervals without inflating false positives. Uses O'Brien-Fleming alpha-spending to keep the overall Type I error at exactly 5% across all looks.
 
-**Frequentist** looks at the gap between A and B's averages and asks: "if there were truly no difference, how unlikely is a gap this large?" If very unlikely (p < 0.05), it calls the difference real.
+**3. Confidence sequences** -- Same guarantee as sequential testing, but you can check at any time without pre-planning. Wider intervals early on; narrows as data accumulates.
 
-**Bayesian** flips the question: "given the data, what's the probability B is actually better?" It also asks: "if I ship B and I'm wrong, how much money do I lose?"
+**4. Bayesian testing** -- Instead of a p-value, gives you P(B > A) directly. Also computes expected loss: "if I ship B and I'm wrong, what's the cost?" Ship requires both P(B > A) > 0.95 and expected loss < 0.1%.
 
-**When they disagree:** Frequentist might say p=0.03 (significant), but Bayesian says P(B>A) = 91% with expected loss of 0.3% -- not confident enough. This means the effect is probably real, but the *business risk* of being wrong is still too high. Collect more data.
+**5. Multi-armed bandits** -- Shifts traffic toward the better-performing variant during the experiment. Thompson Sampling, UCB1, and Epsilon-Greedy. Reduces opportunity cost but produces unbalanced samples.
 
-### The timing question: When can I look at results?
+**6. CUPED** -- Adjusts for pre-experiment user behavior to reduce variance. A user who spent $200 last month will spend more this month regardless of group assignment. Removing that noise is equivalent to doubling sample size.
 
-**Sequential testing** lets you check at pre-planned intervals (20%, 40%, 60%, 80%, 100% of data) without inflating false positives. It sets a strict bar early and loosens it over time.
+**7. Multiple testing correction** -- If you test 20 metrics, there's a 64% chance one shows significance by chance. Holm and Benjamini-Hochberg adjust the threshold. Holm for 2-5 key metrics, BH for 10+ exploratory ones.
 
-**Confidence sequences** let you check at *any* time without pre-planning. The tradeoff: wider intervals, so you need more data to reach significance.
+**8. Power analysis** -- Answers "how many users do I need?" before the experiment starts. Given baseline rate, minimum detectable effect, and desired power, computes required sample size and estimated duration.
 
-**If you peeked without either method:** Your result is unreliable. Looking 5 times at alpha=0.05 gives you a ~14.6% false positive rate, not 5%.
+**9. Novelty detection** -- Checks whether the effect is decaying over time. If lift is +15% in week 1 and +3% in week 3, users are reacting to change, not improvement.
 
-### The noise question: Is my data too noisy?
+**10. Segment analysis** -- Runs the test within each user segment independently. Detects when an overall null result hides opposite effects in subgroups (e.g., +12% mobile, -8% desktop). Uses Cochran's Q to test for heterogeneity.
 
-**CUPED** subtracts out predictable user behavior using pre-experiment data. A user who spent $200 last week will spend more this week regardless of the button color. CUPED removes that noise, making the same effect easier to detect.
+---
 
-**Power analysis** tells you *before* the experiment how many users you need. If you're underpowered (too few users), you might miss a real effect entirely.
+## When Methods Disagree
 
-**When they interact:** If the unadjusted test says p=0.08 (not significant) but CUPED-adjusted says p=0.01 (significant), trust CUPED. It didn't inflate the effect -- it just removed noise. It's like having a bigger sample.
+In practice, they won't always align. Resolution order:
 
-### The "too many metrics" question
+**1. Guardrail regression is a hard veto.** If any guardrail metric (latency, crash rate, revenue) regresses significantly, don't ship -- regardless of what the primary metric shows.
 
-**Multiple testing correction** adjusts for checking many metrics at once. You measured 20 things. Even if B changes nothing, there's a 64% chance at least one shows p < 0.05 by random chance.
+**2. Novelty decay overrides significance.** A decaying effect means the current estimate is inflated. Wait for the trend to stabilize, then re-analyze.
 
-- **Holm:** Use when you have 2-5 important metrics. Controls the chance of *any* false positive.
-- **Benjamini-Hochberg:** Use when you have 10+ exploratory metrics. Accepts some false discoveries but finds more true ones.
-- **One pre-declared primary metric:** No correction needed for that one metric. Correction is for the *family* of extra tests.
+**3. Peeking without correction invalidates the result.** If you checked results multiple times without sequential testing or confidence sequences, the p-value is unreliable. Extend the experiment or re-run with proper stopping rules.
 
-### The "is this effect permanent?" question
+**4. When frequentist and Bayesian disagree,** it usually means the evidence is borderline. Frequentist significant but Bayesian uncertain (P(B>A) < 0.95) means the business risk is still too high. Bayesian confident but frequentist not significant (p = 0.07) means the effect is likely real but hasn't crossed the classical threshold. In both cases: collect more data. They converge with sufficient sample size.
 
-**Novelty detection** checks whether the effect is decaying over time. If the lift was +15% in week 1, +8% in week 2, and +3% in week 3, users were reacting to the *change*, not to the improvement. Wait 1-2 more weeks until the trend flattens, then re-analyze.
+**5. CUPED-adjusted results take precedence** over unadjusted when the covariate is valid (measured pre-experiment, correlation > 0.3). CUPED doesn't inflate effects -- it removes noise.
 
-### The "reduce waste" question
+**6. Bandit results and frequentist results don't mix.** Bandits produce unbalanced allocations by design. Don't run a t-test on bandit-allocated data. Use bandit allocation as the decision signal, or run a separate fixed-split experiment for formal inference.
 
-**Bandits** gradually shift traffic toward the better variant during the experiment. After 5,000 rounds, Thompson Sampling might send 98% to B. But because Group A then has very few observations, you can't run a valid frequentist test on the unbalanced data. Bandits optimize *revenue during the experiment*, not *statistical certainty after it*.
+**7. Segment findings require confirmation.** A significant subgroup effect is trustworthy if the segment was pre-registered or Cochran's Q confirms heterogeneity. Otherwise, treat it as a hypothesis for a follow-up experiment.
 
-### The "does it work for everyone?" question
-
-**Segment analysis** runs the test separately within each user group. Overall, B might show zero effect -- but it's +12% on mobile and -8% on desktop. The average hides the real story. Trustworthy when: you declared the segment before the experiment, or the Cochran's Q test confirms effects genuinely differ across groups.
-
-### Priority when they conflict
-
-```
-1. Guardrail metric regressed?        → Don't ship. Full stop.
-2. Novelty decay detected?            → Wait for effect to stabilize.
-3. Peeked without sequential/CS?      → Result is invalid. Extend or re-run.
-4. Frequentist + Bayesian both agree? → Follow their answer.
-5. They disagree?                     → Collect more data. They'll converge.
-```
+**The default when uncertain: collect more data.** With sufficient sample size, all valid methods converge on the same answer.
 
 ---
 
 ## Tech Stack
 
-**Backend**
-- Python 3.12, FastAPI, Uvicorn
-- SQLAlchemy 2.0 (async), Alembic
-- PostgreSQL 16, Redis 7
-- NumPy, SciPy (statistical engine)
-- Pydantic v2 (validation and serialization)
-
-**Frontend**
-- React 18, TypeScript, Vite
-- Tailwind CSS
-- TanStack Query (server state management)
-- Recharts (data visualization)
-
-**Infrastructure**
-- Docker Compose (PostgreSQL 16, Redis 7, backend)
-- Dockerfile with multi-stage build
+| Layer | Stack |
+|---|---|
+| Backend | Python 3.12, FastAPI, SQLAlchemy 2.0 (async), PostgreSQL 16, Redis 7 |
+| Stats engine | NumPy, SciPy (pure functions, no DB dependencies) |
+| Frontend | React 18, TypeScript, Vite, Tailwind CSS, TanStack Query, Recharts |
+| Infra | Docker Compose, 303 unit tests (pytest) |
 
 ---
 
 ## Quick Start
 
-### Option 1: Docker Compose (recommended)
-
 ```bash
 git clone https://github.com/WeiL11/AB_test.git
 cd AB_test
 
-# Start all services
+# Option A: Docker
 docker compose up -d
-
-# Seed demo data (3 experiments, ~150K events)
 docker compose exec backend python -m scripts.seed_demo
 
-# Backend API:   http://localhost:8000
-# API docs:      http://localhost:8000/docs
-# Frontend:      http://localhost:5173
-```
-
-### Option 2: Manual Setup
-
-**Backend:**
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-
-# Start PostgreSQL and Redis (or use Docker for just the databases)
+# Option B: Local
+cd backend && pip install -e ".[dev]"
 docker compose up -d postgres redis
-
-# Run the server
 uvicorn app.main:app --reload --port 8000
 
-# Seed demo data
-python -m scripts.seed_demo
-
-# Run tests (303 tests)
+# Run tests
 pytest
+
+# Frontend
+cd frontend && npm install && npm run dev
 ```
 
-**Frontend:**
+**Run the simulation** (no database needed):
 ```bash
-cd frontend
-npm install
-npm run dev          # Development server at http://localhost:5173
-npm run build        # Production build (~236ms)
+cd backend && python -m scripts.simulate_experiment
 ```
 
 ---
 
-## API Endpoints
+## API
 
-All endpoints are prefixed with `/api/v1`.
+All endpoints under `/api/v1`. Full Swagger docs at `/docs`.
 
 | Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/health` | Health check |
-| `POST` | `/experiments/` | Create a new experiment with variants and metrics |
-| `GET` | `/experiments/` | List experiments (paginated, filterable by status) |
+| `POST` | `/experiments/` | Create experiment with variants and metrics |
+| `GET` | `/experiments/` | List experiments (paginated, filterable) |
 | `GET` | `/experiments/{id}` | Get experiment details |
-| `PATCH` | `/experiments/{id}` | Update experiment configuration |
-| `POST` | `/experiments/{id}/start` | Start an experiment (draft -> running) |
-| `POST` | `/experiments/{id}/stop` | Stop an experiment (running -> completed) |
-| `GET` | `/experiments/{id}/results` | Run statistical analysis and return results |
-| `POST` | `/events/` | Ingest a single event |
-| `POST` | `/events/batch` | Ingest events in batch (up to 1000) |
-| `GET` | `/assign/{experiment_id}/{user_id}` | Get deterministic variant assignment |
-| `POST` | `/power/sample-size` | Calculate required sample size |
-
-Interactive API documentation is available at `/docs` (Swagger UI) when the server is running.
+| `POST` | `/experiments/{id}/start` | Start experiment |
+| `POST` | `/experiments/{id}/stop` | Stop experiment |
+| `GET` | `/experiments/{id}/results` | Run analysis, return results |
+| `POST` | `/events/batch` | Ingest up to 1,000 events |
+| `GET` | `/assign/{exp_id}/{user_id}` | Deterministic variant assignment |
+| `POST` | `/power/sample-size` | Sample size calculator |
 
 ---
 
 ## Project Structure
 
 ```
-ab-testing-platform/
-|-- docker-compose.yml
-|-- backend/
-|   |-- app/
-|   |   |-- main.py                  # FastAPI application, lifespan, CORS
-|   |   |-- config.py                # Pydantic settings (DB, Redis, defaults)
-|   |   |-- db.py                    # SQLAlchemy async engine, session factory
-|   |   |-- api/                     # Route handlers
-|   |   |   |-- experiments.py       # CRUD + start/stop
-|   |   |   |-- events.py            # Single + batch event ingestion
-|   |   |   |-- analysis.py          # Statistical analysis endpoint
-|   |   |   |-- power.py             # Power/sample-size calculator
-|   |   |   |-- assign.py            # Variant assignment
-|   |   |   +-- health.py            # Health check
-|   |   |-- models/                  # SQLAlchemy ORM models
-|   |   |   |-- experiment.py        # Experiment, Variant, Metric
-|   |   |   |-- event.py             # Event, Assignment
-|   |   |   +-- result.py            # AnalysisResult (cached results)
-|   |   |-- schemas/                 # Pydantic request/response schemas
-|   |   |-- services/                # Business logic layer
-|   |   |   |-- experiment_service.py
-|   |   |   |-- event_service.py
-|   |   |   |-- analysis_service.py
-|   |   |   +-- assignment_service.py
-|   |   +-- stats/                   # Statistical engine (pure functions)
-|   |       |-- base.py              # Result dataclasses
-|   |       |-- frequentist.py       # Welch's t-test, z-test, chi-squared
-|   |       |-- sequential.py        # Group sequential (O'Brien-Fleming, Pocock)
-|   |       |-- confidence_sequence.py # Always-valid inference (mSPRT)
-|   |       |-- bayesian.py          # Beta-Binomial, Normal-Normal, ROPE
-|   |       |-- bandit.py            # Thompson, UCB1, Epsilon-Greedy
-|   |       |-- cuped.py             # CUPED variance reduction
-|   |       |-- multiple_testing.py  # Bonferroni, Holm, BH-FDR
-|   |       |-- power_analysis.py    # Sample size, MDE, power curves
-|   |       |-- novelty_detection.py # Novelty/primacy trend detection
-|   |       +-- segment_analysis.py  # Heterogeneous treatment effects
-|   |-- tests/                       # 303 unit tests
-|   |-- scripts/
-|   |   +-- seed_demo.py             # Generates 3 experiments with 150K events
-|   +-- Dockerfile
-+-- frontend/
-    +-- src/
-        |-- api/                     # API client (TanStack Query)
-        |-- components/
-        |   |-- analysis/            # CI charts, metrics table, results summary
-        |   |-- common/              # MetricCard, StatusBadge, ConfidenceBand
-        |   |-- layout/              # Header, Sidebar
-        |   +-- power/               # Interactive power calculator
-        |-- hooks/                   # useExperiment, useAnalysis
-        |-- pages/                   # Dashboard, CreateExperiment, ExperimentPage, PowerAnalysis
-        +-- types/                   # TypeScript interfaces
+backend/app/
+  api/          # Route handlers (experiments, events, analysis, power, assignment)
+  models/       # SQLAlchemy models (Experiment, Variant, Metric, Event, Assignment)
+  services/     # Business logic (analysis, assignment, event ingestion)
+  stats/        # Statistical engine -- 10 modules, pure functions
+    frequentist.py, sequential.py, confidence_sequence.py, bayesian.py,
+    bandit.py, cuped.py, multiple_testing.py, power_analysis.py,
+    novelty_detection.py, segment_analysis.py
+
+frontend/src/
+  pages/        # Dashboard, ExperimentPage, CreateExperiment, PowerAnalysis
+  components/   # CI charts, metrics table, status badges, power calculator
+  hooks/        # TanStack Query hooks for server state
 ```
-
----
-
-## How It Works
-
-```
-1. CREATE            2. ASSIGN             3. COLLECT            4. ANALYZE
-experiment with      users via             events with           on demand via
-variants + metrics   deterministic hash    metric values         /results endpoint
-       |                   |                    |                      |
-       v                   v                    v                      v
-  [Experiment]    sha256(exp.user) -> bucket  [Events]         [Stats Engine]
-  [Variants]      bucket -> variant          stored in         frequentist |
-  [Metrics]       (stateless, repeatable)    PostgreSQL        sequential  |
-       |                                         |             bayesian   |
-       +-------- stored in PostgreSQL -----------+             bandit     |
-                                                               cuped     |
-                                                               ...       |
-                                                                    |
-                                                                    v
-                                                            [ExperimentResults]
-                                                             per-metric CIs
-                                                             p-values
-                                                             recommendation
-```
-
-**Data flow in detail:**
-
-1. **Experiment Creation** -- An experiment is created with one control variant and one or more treatment variants, each with a traffic percentage. Metrics are defined as primary (drives the ship/no-ship decision), secondary (informational), or guardrail (must not regress).
-
-2. **User Assignment** -- When a user hits the assignment endpoint, `SHA-256(experiment_id + "." + user_id)` is computed and mapped to a bucket in `[0, 9999]`. Variants are sorted by ID and walked in order, accumulating traffic percentages until the bucket is covered. This is fully deterministic: the same user always gets the same variant, with no server-side state required.
-
-3. **Event Ingestion** -- Events are recorded with an experiment ID, variant ID, metric name, and numeric value. Binary outcomes use 0/1 values. Batch ingestion supports up to 1000 events per request. Events are indexed by `(experiment_id, metric_name)` for efficient per-metric queries.
-
-4. **Statistical Analysis** -- The `/results` endpoint fetches all events for the experiment, groups them by variant and metric, and runs the appropriate statistical test. The analysis service computes a recommendation (`ship`, `dont_ship`, `keep_running`, `inconclusive`) based on primary metric significance and guardrail checks.
 
 ---
 
 ## Further Reading
 
-- **[Decision Tree](docs/DECISION_TREE.md)** -- What to do when the 10 methods disagree. Covers 9 conflict scenarios with concrete decisions.
-- **[Architecture Document](docs/ARCHITECTURE.md)** -- System design, database schema, statistical engine architecture, key design decisions with tradeoffs, and scaling considerations.
+- **[Architecture](docs/ARCHITECTURE.md)** -- System design, database schema, key design decisions with tradeoffs, scaling considerations.
+- **[Statistical Methods](docs/STATISTICAL_METHODS.md)** -- Mathematical foundations for all 10 methods.
+- **[Decision Tree](docs/DECISION_TREE.md)** -- Detailed conflict resolution for 9 disagreement scenarios.
 
 ---
 
