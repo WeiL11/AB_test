@@ -109,6 +109,20 @@ Split by platform: iOS (60% of users) vs Android (40%).
 3. **Consider an iOS-only rollout,** since Android shows no benefit. This also reduces the crash rate exposure to a smaller population while the team investigates.
 4. **If crash rate is inherent to the new algorithm,** do not ship — no amount of engagement lift justifies a degraded user experience.
 
+### Q&A
+
+**Q: 9 out of 10 methods say ship. Why veto on one guardrail?**
+
+A 0.68pp crash increase on 50K users = ~340 extra crashes. At Spotify's 250M+ MAU scale, that's hundreds of thousands of additional crashes per week. The +0.14 hrs engagement gain (~8 min/user/week) doesn't justify broken app stability. The fix isn't "don't ship ever" — it's "fix the crash bug, then re-run." Novelty detection confirmed the engagement lift is stable, so it'll still be there after the fix.
+
+**Q: The CS interval [+0.02, +0.25] is wider than the frequentist CI [+0.08, +0.19]. Why use the less precise one?**
+
+The frequentist CI is only valid if you look at the data exactly once at the pre-planned end date. If anyone peeks early — and in practice, everyone does — the coverage guarantee breaks. The CS is valid on day 1, day 10, and day 21. You pay for that with width. This case study shows why it matters: sequential testing found we could stop at 40% of data. At that moment, a regular CI would be invalid. The CS was valid. The width is the cost of honesty about how experiments actually run.
+
+**Q: The iOS/Android split was found post-hoc. How do you know it's not a false discovery?**
+
+Three things make it credible: (1) Cochran's Q test is p<0.001 — the effects genuinely differ across platforms, not just noise in one subgroup. (2) Platform is the most natural segment for a recommendation algorithm change — iOS and Android have different media player stacks and rendering pipelines, so a platform-specific effect has a plausible mechanism. (3) We tested 2 segments, not 20, so the multiple comparisons burden is small. Still, treat it as a hypothesis. The correct next step is a pre-registered iOS-only experiment. If it replicates, ship. If not, the original finding was noise.
+
 ## Methods
 
 4 core testing methods + 6 supporting techniques.
