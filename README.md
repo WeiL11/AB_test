@@ -6,27 +6,45 @@ Group A sees the current experience. Group B sees the change. Both groups genera
 
 ## Case Study
 
-Hypothetical Spotify experiment: new recommendation engine vs. existing. 50,000 users per group, 3 weeks. Three metrics — streaming hours (primary), premium renewal rate (secondary), app crash rate (guardrail).
+Spotify (hypothetical) tests a new recommendation engine. 50,000 users per group, 3 weeks.
 
-Run it yourself (no database needed):
 ```bash
-cd backend && python -m scripts.realistic_case
+cd backend && python -m scripts.realistic_case   # run it yourself, no database needed
 ```
 
-| Method | Result |
-|---|---|
-| Power analysis | Need 974/group for hours, 9,955 for renewal. At 50K: 100% power |
-| Welch's t-test | Streaming +0.27 hrs, p<0.001. Renewal +1.68pp, p<0.001. **Crash +0.29pp, p=0.001** |
-| Sequential | Could stop at 40% of data (z=6.32 > boundary 3.10) |
-| Confidence sequences | +0.27 hrs, bounds [+0.265, +0.266], significant at any stopping time |
-| Bayesian | P(B>A) = 100%, expected loss = 0, recommendation: ship |
-| Thompson Sampling | 88% traffic to treatment after 20K rounds |
-| CUPED | 75% variance reduction using last month's data, same effect |
-| Multiple testing | All 3 metrics significant after Holm correction |
-| Novelty detection | Stable over 21 days, no decay |
-| Segment analysis | iOS: +0.45 hrs (p<0.001). Android: -0.03 hrs (not significant) |
+### Decision: Do Not Ship
 
-**Decision: do not ship.** 9 methods say ship, but the crash rate guardrail failed. Guardrail regression is a hard veto. The effect is also iOS-only — Android shows no improvement.
+The new algorithm improves streaming hours and renewal rates, but **increases app crash rate**. Crash rate is a guardrail metric — any significant regression is a hard veto regardless of primary metric gains.
+
+### What improved
+
+| Metric | Control | Treatment | Change | p-value | Verdict |
+|---|---|---|---|---|---|
+| Streaming hours (primary) | 18.20 hrs/wk | 18.46 hrs/wk | **+0.27 hrs** | <0.001 | Significant lift |
+| Premium renewal (secondary) | 81.9% | 83.6% | **+1.68pp** | <0.001 | Significant lift |
+
+### What blocked the launch
+
+| Metric | Control | Treatment | Change | p-value | Verdict |
+|---|---|---|---|---|---|
+| App crash rate (guardrail) | 1.90% | 2.20% | **+0.29pp** | 0.001 | **Regression — veto** |
+
+### Deeper analysis
+
+| Check | Finding | Implication |
+|---|---|---|
+| Early stopping | Could stop at 40% of data (z=6.32 > boundary 3.10) | Effect was detectable early — not a data issue |
+| Bayesian | P(B>A) = 100%, expected loss = 0 | The improvement is real, not noise |
+| Variance reduction | CUPED reduced noise by 75% using last month's data | Effect estimate is reliable |
+| Effect stability | No decay over 21 days (slope p=0.55) | Not a novelty effect |
+| Platform segments | iOS: +0.45 hrs (p<0.001), Android: -0.03 hrs (p=0.49) | Effect is iOS-only. iOS is 60% of users, masking a null result on Android |
+
+### Recommended next steps
+
+1. Investigate the crash rate increase — is it caused by the new algorithm or a correlated deployment?
+2. If the crash issue is fixable, patch and re-run the experiment.
+3. Consider an iOS-only rollout, since Android shows no benefit.
+4. If crash rate is inherent to the new algorithm, do not ship.
 
 ## Methods
 
