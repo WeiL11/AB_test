@@ -1,6 +1,6 @@
 # Experimentor
 
-A/B testing platform with 10 statistical methods. Python/FastAPI backend, React frontend, 303 tests.
+A/B testing platform with 4 core testing methods and 6 supporting techniques. Python/FastAPI backend, React frontend, 303 tests.
 
 Group A sees the current experience. Group B sees the change. Both groups generate data. This platform determines whether the difference is real or noise.
 
@@ -20,24 +20,25 @@ The new algorithm improves streaming hours and renewal rates, but **increases ap
 
 | Metric | Control | Treatment | Change | p-value | Verdict |
 |---|---|---|---|---|---|
-| Streaming hours (primary) | 18.20 hrs/wk | 18.46 hrs/wk | **+0.27 hrs** | <0.001 | Significant lift |
+| Streaming hours (primary) | 18.20 hrs/wk | 18.33 hrs/wk | **+0.14 hrs** | <0.001 | Significant lift |
 | Premium renewal (secondary) | 81.9% | 83.6% | **+1.68pp** | <0.001 | Significant lift |
 
 ### What blocked the launch
 
 | Metric | Control | Treatment | Change | p-value | Verdict |
 |---|---|---|---|---|---|
-| App crash rate (guardrail) | 1.90% | 2.20% | **+0.29pp** | 0.001 | **Regression — veto** |
+| App crash rate (guardrail) | 1.81% | 2.49% | **+0.68pp** | <0.001 | **Regression — veto** |
 
 ### Deeper analysis
 
 | Check | Finding | Implication |
 |---|---|---|
-| Early stopping | Could stop at 40% of data (z=6.32 > boundary 3.10) | Effect was detectable early — not a data issue |
-| Bayesian | P(B>A) = 100%, expected loss = 0 | The improvement is real, not noise |
+| Power analysis | Need ~50K per group; we have 50K (80% power at MDE=0.08 hrs) | Experiment is properly powered, not over- or under-powered |
+| Early stopping | Could stop at 40% of data (z=3.39 > boundary 3.10) | Effect was detectable early — not a data issue |
+| Bayesian | P(B>A) >99.99%, expected loss <0.0001 | The improvement is real, not noise |
 | Variance reduction | CUPED reduced noise by 75% using last month's data | Effect estimate is reliable |
 | Effect stability | No decay over 21 days (slope p=0.55) | Not a novelty effect |
-| Platform segments | iOS: +0.45 hrs (p<0.001), Android: -0.03 hrs (p=0.49) | Effect is iOS-only. iOS is 60% of users, masking a null result on Android |
+| Platform segments | iOS: +0.37 hrs (p<0.001), Android: -0.06 hrs (p=0.17) | Effect is iOS-only. The overall +0.14 hrs is a weighted average (60% iOS, 40% Android) masking a null result on Android |
 
 ### Recommended next steps
 
@@ -48,18 +49,20 @@ The new algorithm improves streaming hours and renewal rates, but **increases ap
 
 ## Methods
 
-| # | Method | Question it answers |
-|---|---|---|
-| 1 | Welch's t-test | Is the difference between A and B statistically significant? |
-| 2 | Sequential testing | Can I check results early without inflating false positives? |
-| 3 | Confidence sequences | Can I monitor continuously without pre-planning when to look? |
-| 4 | Bayesian testing | What is P(B > A), and what do I lose if I'm wrong? |
-| 5 | Multi-armed bandits | Can I shift traffic to the winner during the experiment? |
-| 6 | CUPED | Can I reduce noise using pre-experiment data? |
-| 7 | Multiple testing | How do I correct for testing many metrics at once? |
-| 8 | Power analysis | How many users do I need before starting? |
-| 9 | Novelty detection | Is the effect decaying over time? |
-| 10 | Segment analysis | Does the effect differ across user groups? |
+4 core testing methods + 6 supporting techniques.
+
+| | Method | Role | Question it answers |
+|---|---|---|---|
+| 1 | Welch's t-test | Core | Is the difference between A and B statistically significant? |
+| 2 | Bayesian testing | Core | What is P(B > A), and what do I lose if I'm wrong? |
+| 3 | Sequential testing | Core | Can I check results early without inflating false positives? |
+| 4 | Confidence sequences | Core | Can I monitor continuously without pre-planning when to look? |
+| 5 | CUPED | Adjust | Can I reduce noise using pre-experiment data? |
+| 6 | Multiple testing | Adjust | How do I correct for testing many metrics at once? |
+| 7 | Novelty detection | Adjust | Is the effect decaying over time? |
+| 8 | Power analysis | Plan | How many users do I need before starting? |
+| 9 | Multi-armed bandits | Allocate | Can I shift traffic to the winner during the experiment? |
+| 10 | Segment analysis | Explore | Does the effect differ across user groups? |
 
 ## When Methods Disagree
 
@@ -89,13 +92,13 @@ Default: collect more data.
 ```bash
 git clone https://github.com/WeiL11/AB_test.git && cd AB_test
 
-# Docker
+# Docker (full stack)
 docker compose up -d
 docker compose exec backend python -m scripts.seed_demo
 
 # Or local
-cd backend && pip install -e ".[dev]"
 docker compose up -d postgres redis
+cd backend && pip install -e ".[dev]"
 uvicorn app.main:app --reload --port 8000
 pytest  # 303 tests
 

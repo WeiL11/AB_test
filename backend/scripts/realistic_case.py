@@ -35,12 +35,13 @@ from app.stats.segment_analysis import analyze_segments
 
 def _decision(freq_hours, freq_crash, bayes_hours, novelty):
     guardrail_fail = freq_crash.is_significant and freq_crash.absolute_effect > 0
+    prob_str = ">99.99%" if bayes_hours.prob_treatment_better >= 0.9999 else f"{bayes_hours.prob_treatment_better:.2%}"
+    loss_str = "<0.0001" if bayes_hours.expected_loss_treatment < 0.0001 else f"{bayes_hours.expected_loss_treatment:.4f}"
     if guardrail_fail:
-        return ("DO NOT SHIP. The primary metric improved (+0.27 hrs, p<0.001) and Bayesian\n"
-                "  agrees (P(B>A)=100%, loss=0). But the crash rate guardrail failed (+0.29pp,\n"
-                "  p=0.001). Investigate the crash increase before proceeding. If the crash\n"
-                "  issue is fixable, patch it and re-run. If inherent to the new algorithm,\n"
-                "  do not ship.")
+        return (f"DO NOT SHIP. The primary metric improved ({freq_hours.absolute_effect:+.2f} hrs, p<0.001) and Bayesian\n"
+                f"  agrees (P(B>A)={prob_str}, loss={loss_str}). But the crash rate guardrail failed\n"
+                f"  ({freq_crash.absolute_effect:+.4f}, p={freq_crash.p_value:.4f}). Investigate the crash increase\n"
+                f"  before proceeding. If fixable, patch and re-run. If inherent, do not ship.")
     if novelty.effect_type != "stable":
         return "WAIT. Effect is not stable yet. Extend the experiment."
     if freq_hours.is_significant and bayes_hours.recommendation == "ship":
@@ -78,21 +79,23 @@ def main():
   Experiment:  New ML-based recommendation engine vs. existing engine
   Groups:      50,000 Premium users each
   Duration:    3 weeks
-  Primary:     Streaming hours/week  (continuous, control mean ~18.5 hrs)
+  Primary:     Streaming hours/week  (continuous, control mean ~18.5 hrs, MDE=0.08 hrs)
   Secondary:   Premium renewal rate  (binomial, control ~82%)
-  Guardrail:   App crash rate        (binomial, must not increase, baseline ~2%)
+  Guardrail:   App crash rate        (binomial, must not increase, baseline ~1.9%)
   Segments:    iOS (60%) vs Android (40%)
   CUPED:       Last month's streaming hours as covariate
 """)
 
     # --- Streaming hours (continuous) ---
-    # Control: mean=18.5 hrs/week, sd=6.2
-    # Treatment: mean=19.3 hrs/week, sd=6.4 (true lift = +0.8 hrs, ~4.3%)
+    # Control: mean=18.5 hrs/week, sd~4.4 (after pre/post correlation)
+    # Treatment: mean=18.93 hrs/week, sd~4.4
+    # Effective true lift = 0.35 * (18.93 - 18.5) = +0.15 hrs (~0.8%)
+    # This requires ~50K users per group to detect at MDE=0.08 hrs.
     pre_hours_c = np.random.normal(18.0, 5.8, N)  # last month
     pre_hours_t = np.random.normal(18.0, 5.8, N)
 
     hours_c = 0.65 * pre_hours_c + 0.35 * np.random.normal(18.5, 6.2, N)
-    hours_t = 0.65 * pre_hours_t + 0.35 * np.random.normal(19.3, 6.4, N)
+    hours_t = 0.65 * pre_hours_t + 0.35 * np.random.normal(18.93, 6.2, N)
 
     # --- Premium renewal rate (binomial) ---
     # Control: 82%, Treatment: 83.5% (true lift = +1.5pp)
@@ -100,19 +103,20 @@ def main():
     renew_t = np.random.binomial(1, 0.835, N).astype(float)
 
     # --- App crash rate (guardrail) ---
-    # Both ~2%, no real difference (guardrail should NOT trigger)
-    crash_c = np.random.binomial(1, 0.020, N).astype(float)
-    crash_t = np.random.binomial(1, 0.021, N).astype(float)
+    # Control: 1.9%, Treatment: 2.4% (true regression = +0.5pp)
+    # Large enough for the guardrail to catch a real problem, not noise.
+    crash_c = np.random.binomial(1, 0.019, N).astype(float)
+    crash_t = np.random.binomial(1, 0.024, N).astype(float)
 
     # --- Segments: iOS (60%) vs Android (40%) ---
     ios_mask_c = np.random.random(N) < 0.60
     ios_mask_t = np.random.random(N) < 0.60
 
-    # iOS users: stronger effect (+1.1 hrs)
-    # Android users: weaker effect (+0.3 hrs)
+    # iOS users: stronger effect (base +0.15 + 0.20 = +0.35 hrs)
+    # Android users: null effect (base +0.15 - 0.15 = ~0.00 hrs)
     hours_t_seg = hours_t.copy()
-    hours_t_seg[ios_mask_t] += 0.15   # extra boost on iOS
-    hours_t_seg[~ios_mask_t] -= 0.25  # slightly less on Android
+    hours_t_seg[ios_mask_t] += 0.20   # extra boost on iOS
+    hours_t_seg[~ios_mask_t] -= 0.15  # cancels base effect on Android
 
     # Daily data for novelty detection (21 days)
     daily_effects = []
@@ -129,22 +133,22 @@ def main():
     # ──────────────────────────────────────────────────────
     divider("1. POWER ANALYSIS — How many users do we need?")
 
-    # For streaming hours: baseline=18.5, sd~6.3, MDE=0.8 hrs
-    # Effect size (Cohen's d) = 0.8 / 6.3 ≈ 0.127
+    # For streaming hours: baseline=18.5, sd~4.5, MDE=0.08 hrs
+    # Effect size (Cohen's d) = 0.08 / 4.5 ≈ 0.018
     # For proportions: baseline=0.82, MDE=0.015
     power_hours = required_sample_size(
         baseline_rate=18.5,
-        minimum_detectable_effect=0.8,
+        minimum_detectable_effect=0.08,
         alpha=0.05,
         power=0.80,
         metric_type="continuous",
-        variance=6.3**2,
+        variance=4.5**2,
     )
     power_renew = required_sample_size(
         baseline_rate=0.82,
         minimum_detectable_effect=0.015,
     )
-    actual_power_hours = compute_power(N, 18.5, 0.8, metric_type="continuous", variance=6.3**2)
+    actual_power_hours = compute_power(N, 18.5, 0.08, metric_type="continuous", variance=4.5**2)
     actual_power_renew = compute_power(N, 0.82, 0.015)
     duration = estimate_duration(power_hours.required_sample_size_per_variant, daily_traffic=4760)
 
@@ -240,15 +244,29 @@ def main():
     bayes_hours = normal_test(hours_c, hours_t)
     bayes_renew = beta_binomial_test(s_renew_c, N, s_renew_t, N)
 
+    def _fmt_prob(p):
+        """Format probability, capping at >99.99% / <0.01% to signal precision limits."""
+        if p >= 0.9999:
+            return ">99.99%"
+        if p <= 0.0001:
+            return "<0.01%"
+        return f"{p:.4f}"
+
+    def _fmt_loss(loss):
+        """Format expected loss, capping at <0.0001 to signal precision limits."""
+        if loss < 0.0001:
+            return "<0.0001"
+        return f"{loss:.6f}"
+
     print(f"  Streaming hours (Normal model):")
-    print(f"    P(B > A):            {bayes_hours.prob_treatment_better:.4f}")
-    print(f"    Expected loss (ship): {bayes_hours.expected_loss_treatment:.6f} hrs")
+    print(f"    P(B > A):            {_fmt_prob(bayes_hours.prob_treatment_better)}")
+    print(f"    Expected loss (ship): {_fmt_loss(bayes_hours.expected_loss_treatment)} hrs")
     print(f"    95% credible interval: [{bayes_hours.credible_interval_lower:+.3f}, {bayes_hours.credible_interval_upper:+.3f}]")
     print(f"    Recommendation:      {bayes_hours.recommendation}")
     print(f"")
     print(f"  Premium renewal (Beta-Binomial):")
-    print(f"    P(B > A):            {bayes_renew.prob_treatment_better:.4f}")
-    print(f"    Expected loss (ship): {bayes_renew.expected_loss_treatment:.6f}")
+    print(f"    P(B > A):            {_fmt_prob(bayes_renew.prob_treatment_better)}")
+    print(f"    Expected loss (ship): {_fmt_loss(bayes_renew.expected_loss_treatment)}")
     print(f"    95% credible interval: [{bayes_renew.credible_interval_lower:+.4f}, {bayes_renew.credible_interval_upper:+.4f}]")
     print(f"    Recommendation:      {bayes_renew.recommendation}")
 
@@ -370,8 +388,8 @@ def main():
     [{'x' if not (freq_crash.is_significant and freq_crash.absolute_effect > 0) else ' '}] Guardrail OK (crash rate did not increase)
     [{'x' if novelty.effect_type == 'stable' else ' '}] Effect is stable over time (no novelty decay)
     [{'x' if freq_hours.is_significant else ' '}] Primary metric significant (frequentist)
-    [{'x' if bayes_hours.prob_treatment_better > 0.95 else ' '}] Bayesian P(B>A) > 95% (actual: {bayes_hours.prob_treatment_better:.1%})
-    [{'x' if bayes_hours.expected_loss_treatment < 0.01 else ' '}] Expected loss acceptable (actual: {bayes_hours.expected_loss_treatment:.4f} hrs)
+    [{'x' if bayes_hours.prob_treatment_better > 0.95 else ' '}] Bayesian P(B>A) > 95% (actual: {'>99.99%' if bayes_hours.prob_treatment_better >= 0.9999 else f'{bayes_hours.prob_treatment_better:.1%}'})
+    [{'x' if bayes_hours.expected_loss_treatment < 0.01 else ' '}] Expected loss acceptable (actual: {'<0.0001' if bayes_hours.expected_loss_treatment < 0.0001 else f'{bayes_hours.expected_loss_treatment:.4f}'} hrs)
     [{'x' if cuped.variance_reduction_pct > 0.2 else ' '}] CUPED confirms effect with less noise ({cuped.variance_reduction_pct:.0%} reduction)
 
   DECISION: {_decision(freq_hours, freq_crash, bayes_hours, novelty)}

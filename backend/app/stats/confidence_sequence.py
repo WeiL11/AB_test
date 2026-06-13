@@ -78,8 +78,9 @@ def confidence_sequence(
 
     where:
 
-    - ``sigma2 = var(control)/n_c + var(treatment)/n_t`` is the estimated
-      variance of the mean difference.
+    - ``sigma2 = var(control) + var(treatment)`` is the pooled
+      per-observation variance (the sum of sample variances from each
+      group, NOT the variance of the mean difference).
     - ``v`` is the mixing-variance parameter that controls the shape of
       the confidence sequence (wider v makes the CS tighter at larger
       sample sizes but wider at smaller ones).
@@ -143,8 +144,10 @@ def confidence_sequence(
     var_c = float(np.var(control, ddof=1))
     var_t = float(np.var(treatment, ddof=1))
 
-    # Estimated variance of the mean difference.
-    sigma2 = var_c / n_c + var_t / n_t
+    # Pooled per-observation variance (NOT variance of the mean).
+    # The mSPRT formula expects per-observation scale; dividing by n
+    # here would make the CS collapse at large sample sizes.
+    sigma2 = var_c + var_t
 
     # --- handle degenerate zero-variance case ----------------------------- #
     if sigma2 <= 0.0:
@@ -252,7 +255,7 @@ def compute_confidence_sequence_over_time(
     # across checkpoints (using a fixed mixing variance).
     var_c_full = float(np.var(control, ddof=1))
     var_t_full = float(np.var(treatment, ddof=1))
-    sigma2_full = var_c_full / control.size + var_t_full / treatment.size
+    sigma2_full = var_c_full + var_t_full
     v_opt = sigma2_full if sigma2_full > 0.0 else 1.0
 
     results: List[ConfidenceSequenceResult] = []
@@ -290,7 +293,7 @@ def _msprt_half_width(
     Parameters
     ----------
     sigma2 : float
-        Estimated variance of the mean difference (must be positive).
+        Pooled per-observation variance (must be positive).
     n : int
         Effective per-group sample size (must be positive).
     v : float
