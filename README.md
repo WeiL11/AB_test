@@ -122,21 +122,21 @@ Full CRUD for experiments and events — see `/docs` for all 12 endpoints.
 
 ## Tests
 
-303 tests, no mocking. Synthetic data with known properties verifies math correctness.
+303 tests, no mocking. Synthetic data with known properties verifies math correctness. Modules with multiple algorithms (bandits: 3, Bayesian: 2, multiple testing: 3, sequential: 2) have the most tests because each algorithm needs its own correctness and edge case coverage.
 
-| Module | Count | Covers |
-|---|---|---|
-| Bayesian | 48 | Posterior, P(B>A), expected loss, ROPE, recommendations |
-| Bandits | 54 | Thompson/UCB1/Epsilon-Greedy, regret, simulation |
-| Sequential | 35 | O'Brien-Fleming/Pocock, alpha spending, early stopping |
-| Confidence sequences | 33 | Narrowing, detection, any-time validity |
-| Multiple testing | 33 | Bonferroni/Holm/BH, step logic, dispatching |
-| Novelty detection | 26 | Decay/growth/stable, weighted regression |
-| CUPED | 20 | Variance reduction, unbiasedness, effect preservation |
-| Frequentist | 14 | Welch's t-test, z-test, chi-squared |
-| Integration | 12 | End-to-end: all methods on same dataset |
-| Power analysis | 11 | Sample size, MDE, power curves, duration |
-| Assignment | 5 | Deterministic hashing, uniform distribution |
+| Module | Count | Why | Covers |
+|---|---|---|---|
+| Bandits | 56 | 3 algorithms x ~15 + shared | Thompson/UCB1/Epsilon-Greedy, regret, simulation |
+| Bayesian | 46 | 2 models x ~20 + validation | Posterior, P(B>A), expected loss, ROPE, recommendations |
+| Multiple testing | 42 | 3 methods x ~10 + dispatcher | Bonferroni/Holm/BH, step logic, dispatching |
+| Sequential | 35 | 2 boundaries + z-test | O'Brien-Fleming/Pocock, alpha spending, early stopping |
+| Confidence sequences | 30 | 1 algorithm + over-time | Narrowing, detection, any-time validity |
+| Novelty detection | 30 | 3 patterns + daily helper | Decay/growth/stable, weighted regression |
+| CUPED | 20 | 1 method, many properties | Variance reduction, unbiasedness, effect preservation |
+| Frequentist | 14 | 2 tests + chi-squared | Welch's t-test, z-test, chi-squared |
+| Power analysis | 13 | 3 functions | Sample size, power curves, duration |
+| Integration | 12 | 1 per method + agreement | End-to-end: all methods on same dataset |
+| Assignment | 5 | 1 algorithm | Deterministic SHA-256 hashing, uniform distribution |
 
 ## Structure
 
